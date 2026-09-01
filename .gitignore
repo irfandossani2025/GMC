@@ -1,0 +1,18 @@
+# Dependencies
+node_modules
+
+# Environment files contain production secrets and must stay out of Git.
+.env
+.env*.local
+
+# Next.js build output
+.next
+out
+
+# Local runtime/cache files
+tmp
+*.log
+tsconfig.tsbuildinfo
+
+# Local backups and archives
+*.zip

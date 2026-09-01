@@ -1,0 +1,339 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Admin/Staff users
+model User {
+  id        String     @id @default(cuid())
+  email     String     @unique
+  password  String
+  name      String
+  role      UserRole   @default(STAFF)
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  members   Member[]
+  sessions  Session[]
+  auditLogs AuditLog[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  STAFF
+}
+
+// Members/Patients
+model Member {
+  id              String   @id @default(cuid())
+  memberId        String   @unique
+  name            String
+  email           String?
+  phone           String   @unique
+  dateOfBirth     DateTime?
+  gender          String?
+  address         String?
+  city            String?
+  state           String?
+  zipCode         String?
+  bloodGroup      String?
+  emergencyContact String?
+  emergencyPhone  String?
+  
+  // Membership
+  membershipType  MembershipType @default(STANDARD)
+  joinDate        DateTime   @default(now())
+  expiryDate      DateTime
+  status          MemberStatus @default(ACTIVE)
+  
+  // Card
+  cardIssued      Boolean    @default(false)
+  cardImageUrl    String?
+  cardGeneratedAt DateTime?
+  
+  // Relations
+  createdByUserId String
+  createdByUser   User       @relation(fields: [createdByUserId], references: [id])
+  
+  cards           MembershipCard[]
+  transactions    Transaction[]
+  packages        MemberPackage[]
+  sessions        Session[]
+  auditLogs       AuditLog[]
+  
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([memberId])
+  @@index([phone])
+  @@index([email])
+  @@index([createdByUserId])
+  @@map("members")
+}
+
+enum MembershipType {
+  STANDARD
+  PREMIUM
+  CORPORATE
+}
+
+enum MemberStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  EXPIRED
+}
+
+// Membership Cards (physical card records)
+model MembershipCard {
+  id              String   @id @default(cuid())
+  cardNumber      String   @unique
+  barcode         String   @unique
+  
+  memberId        String
+  member          Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  
+  frontImageUrl   String?
+  backImageUrl    String?
+  combinedImageUrl String?
+  
+  issuedDate      DateTime @default(now())
+  expiryDate      DateTime
+  status          CardStatus @default(ACTIVE)
+  
+  pdfUrl          String?
+  pdfGeneratedAt  DateTime?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([memberId])
+  @@index([barcode])
+  @@map("membership_cards")
+}
+
+enum CardStatus {
+  ACTIVE
+  INACTIVE
+  PRINTED
+  ARCHIVED
+}
+
+// Transactions/Payments
+model Transaction {
+  id              String   @id @default(cuid())
+  transactionId   String   @unique
+  
+  memberId        String
+  member          Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  
+  amount          Float
+  type            TransactionType
+  status          TransactionStatus @default(PENDING)
+  description     String?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([memberId])
+  @@index([transactionId])
+  @@map("transactions")
+}
+
+enum TransactionType {
+  MEMBERSHIP_FEE
+  RENEWAL
+  PREMIUM_UPGRADE
+  SERVICE_CHARGE
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+// WhatsApp Messages Log
+model WhatsAppLog {
+  id              String   @id @default(cuid())
+  phone           String
+  message         String
+  messageType     String   // WELCOME, CARD_ISSUED, SESSION_USED, etc.
+  status          String   @default("pending") // pending, sent, failed
+  response        String?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([phone])
+  @@index([status])
+  @@map("whatsapp_logs")
+}
+
+// Treatments
+model Treatment {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  category        String   // FACIAL, LASER, INJECTION, etc.
+  durationMinutes Int      @default(30)
+  price           Float    @default(0)
+  active          Boolean  @default(true)
+  
+  packages        TreatmentPackage[]
+  sessions        Session[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([category])
+  @@index([active])
+  @@map("treatments")
+}
+
+// Treatment Packages (predefined packages with multiple sessions)
+model TreatmentPackage {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  treatmentId     String
+  treatment       Treatment @relation(fields: [treatmentId], references: [id])
+  
+  sessionCount    Int      // Number of sessions in package
+  price           Float
+  validityMonths  Int      @default(6) // How long the package is valid
+  active          Boolean  @default(true)
+  
+  memberPackages  MemberPackage[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([treatmentId])
+  @@index([active])
+  @@map("treatment_packages")
+}
+
+// Member Treatment Packages (purchased packages)
+model MemberPackage {
+  id              String   @id @default(cuid())
+  memberId        String
+  member          Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  
+  packageId       String
+  package         TreatmentPackage @relation(fields: [packageId], references: [id])
+  
+  purchasedAt     DateTime @default(now())
+  expiryDate      DateTime
+  totalSessions   Int
+  usedSessions    Int      @default(0)
+  remainingSessions Int    @default(0)
+  
+  status          PackageStatus @default(ACTIVE)
+  
+  sessions        Session[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([memberId])
+  @@index([packageId])
+  @@index([status])
+  @@map("member_packages")
+}
+
+enum PackageStatus {
+  ACTIVE
+  EXPIRED
+  COMPLETED
+  CANCELLED
+}
+
+// Sessions
+model Session {
+  id              String   @id @default(cuid())
+  memberId        String
+  member          Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  
+  treatmentId     String?
+  treatment       Treatment? @relation(fields: [treatmentId], references: [id])
+  
+  packageId       String?
+  memberPackage   MemberPackage? @relation(fields: [packageId], references: [id])
+  
+  sessionNumber   Int?     // Which session in the package (1, 2, 3, etc.)
+  status          SessionStatus @default(SCHEDULED)
+  
+  scheduledAt     DateTime?
+  completedAt     DateTime?
+  processedByUserId String?
+  processedByUser User?   @relation(fields: [processedByUserId], references: [id])
+  
+  notes           String?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([memberId])
+  @@index([treatmentId])
+  @@index([packageId])
+  @@index([status])
+  @@index([scheduledAt])
+  @@map("sessions")
+}
+
+enum SessionStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+// Audit Logs
+model AuditLog {
+  id              String   @id @default(cuid())
+  action          String   // CREATE, UPDATE, DELETE, LOGIN, CARD_GENERATED, etc.
+  entityType      String   // User, Member, Card, Transaction, etc.
+  entityId        String
+  changes         String?  // JSON stringified changes
+  
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  
+  memberId        String?
+  member          Member?  @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  
+  ipAddress       String?
+  userAgent       String?
+  
+  createdAt       DateTime @default(now())
+
+  @@index([userId])
+  @@index([memberId])
+  @@index([entityType])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// Settings
+model Settings {
+  id              String   @id @default(cuid())
+  key             String   @unique
+  value           String
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("settings")
+}
