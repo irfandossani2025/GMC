@@ -15,6 +15,17 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
+  const getNextPath = () => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const nextPath = searchParams.get('next');
+
+    if (nextPath?.startsWith('/') && !nextPath.startsWith('//')) {
+      return nextPath;
+    }
+
+    return '/dashboard';
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -24,7 +35,7 @@ export default function LoginPage() {
       const response = await postJson<{ success: boolean }>('/api/auth/login', { email, password });
       
       if (response.success) {
-        router.push('/dashboard');
+        router.push(getNextPath());
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed. Please try again.');

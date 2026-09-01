@@ -16,7 +16,7 @@ interface MiddlewareTokenPayload {
 		    return atob(padded);
 	  }
 	
-	async function verifyHs256Token(token: string, secret: string): Promise<MiddlewareTokenPayload | null> {
+async function verifyHs256Token(token: string, secret: string): Promise<MiddlewareTokenPayload | null> {
 		  try {
 		    const parts = token.split('.');
 	    if (parts.length !== 3) {
@@ -63,6 +63,17 @@ interface MiddlewareTokenPayload {
 }
 }
 
+function redirectToLogin(request: NextRequest): NextResponse {
+	  const loginUrl = new URL('/auth/login', request.url);
+	  const returnPath = `${request.nextUrl.pathname}${request.nextUrl.search}`;
+
+	  if (returnPath && returnPath !== '/dashboard') {
+		      loginUrl.searchParams.set('next', returnPath);
+	  }
+
+	  return NextResponse.redirect(loginUrl);
+}
+
 export async function middleware(request: NextRequest) {
 	  const { pathname } = request.nextUrl;
 	
@@ -82,7 +93,7 @@ export async function middleware(request: NextRequest) {
 		      if (pathname.startsWith('/api')) {
 				        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 			  }
-		      return NextResponse.redirect(new URL('/auth/login', request.url));
+		      return redirectToLogin(request);
 	  }
 	
 	  const secret = process.env.JWT_SECRET || 'fallback-secret';
@@ -90,7 +101,7 @@ export async function middleware(request: NextRequest) {
 	
 	  if (!decoded) {
 		      // Token invalid or expired, redirect to login
-		      const response = NextResponse.redirect(new URL('/auth/login', request.url));
+		      const response = redirectToLogin(request);
 		      response.cookies.delete('auth-token');
 		      return response;
 	  }
