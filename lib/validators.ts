@@ -48,6 +48,8 @@ export const updateUserSchema = z.object({
 });
 
 export const createMemberSchema = z.object({
+  patientId: optionalTrimmedString.pipe(z.string().max(64).regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/, 'Use letters, numbers, hyphens or underscores for the patient ID.').optional()),
+  packageId: optionalTrimmedString.pipe(z.string().max(100).optional()),
   name: z.string().min(2, 'Name is required'),
   email: optionalTrimmedString.pipe(z.string().email('Invalid email').optional()),
   phone: z.string().min(10, 'Invalid phone number'),

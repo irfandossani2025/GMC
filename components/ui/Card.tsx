@@ -10,7 +10,7 @@ export const Card = React.forwardRef<HTMLDivElement, CardProps>(
     <div
       ref={ref}
       className={cn(
-        'bg-white rounded-lg border border-gray-200 shadow-sm',
+        'ui-card bg-white rounded-xl border border-primary/10 shadow-md shadow-primary/5 transition-shadow hover:shadow-lg hover:shadow-primary/10',
         className
       )}
       {...props}
@@ -26,7 +26,7 @@ export const CardHeader: React.FC<{ children: React.ReactNode; className?: strin
   children,
   className,
 }) => (
-  <div className={cn('px-6 py-4 border-b border-gray-200', className)}>
+  <div className={cn('ui-card-header px-6 py-4 border-b border-primary/10', className)}>
     {children}
   </div>
 );
@@ -35,16 +35,17 @@ export const CardTitle: React.FC<{ children: React.ReactNode; className?: string
   children,
   className,
 }) => (
-  <h2 className={cn('text-xl font-semibold text-gray-900', className)}>
+  <h2 className={cn('ui-card-title text-xl font-semibold text-primary', className)}>
     {children}
   </h2>
 );
 
-export const CardContent: React.FC<{ children: React.ReactNode; className?: string }> = ({
+export const CardContent: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
   children,
   className,
+  ...props
 }) => (
-  <div className={cn('px-6 py-4', className)}>
+  <div {...props} className={cn('ui-card-content px-6 py-4', className)}>
     {children}
   </div>
 );
@@ -53,7 +54,7 @@ export const CardFooter: React.FC<{ children: React.ReactNode; className?: strin
   children,
   className,
 }) => (
-  <div className={cn('px-6 py-4 border-t border-gray-200 flex justify-end gap-2', className)}>
+  <div className={cn('ui-card-footer px-6 py-4 border-t border-primary/10 flex justify-end gap-2', className)}>
     {children}
   </div>
 );

@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  distDir: process.env.GMC_BUILD_DIR || '.next',
   swcMinify: true,
   compress: true,
   poweredByHeader: false,

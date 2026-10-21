@@ -1,9 +1,12 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useLanguage } from '@/components/i18n/LanguageProvider';
+import { formatUiDate, Language } from '@/lib/i18n/translate';
+
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { getJson } from '@/lib/api-client';
+import { requestJson } from '@/lib/api-client';
 
 interface SessionRecord {
 	  id: string;
@@ -48,26 +51,20 @@ const STATUS_LABELS: Record<string, string> = {
 	  COMPLETED: 'Completed',
 	  CANCELLED: 'Cancelled',
 	  NO_SHOW: 'No Show',
-	  IN_PROGRESS: 'In Progress',
+	  SCHEDULED: 'Scheduled',
 };
 
 const STATUS_COLORS: Record<string, string> = {
 	  COMPLETED: 'bg-green-100 text-green-800',
 	  CANCELLED: 'bg-red-100 text-red-800',
 	  NO_SHOW: 'bg-yellow-100 text-yellow-800',
-	  IN_PROGRESS: 'bg-blue-100 text-blue-800',
+	  SCHEDULED: 'bg-blue-100 text-blue-800',
 };
 
-function formatDateTime(dateStr: string | null): string {
-	  if (!dateStr) return '—';
-	  const d = new Date(dateStr);
-	  return d.toLocaleString('en-GB', {
-		      day: '2-digit', month: 'short', year: 'numeric',
-		      hour: '2-digit', minute: '2-digit',
-	  });
-}
+function formatDateTime(dateStr: string | null, language: Language): string { return dateStr ? formatUiDate(language, dateStr, true) : '—'; }
 
 export default function SessionHistoryPage() {
+  const { t, language } = useLanguage();
 	  const [sessions, setSessions] = useState<SessionRecord[]>([]);
 	  const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 50, total: 0, totalPages: 1 });
 	  const [loading, setLoading] = useState(true);
@@ -77,46 +74,28 @@ export default function SessionHistoryPage() {
 	  const [toDate, setToDate] = useState('');
 	  const [currentPage, setCurrentPage] = useState(1);
 	
-	  const fetchSessions = useCallback(async (page = 1) => {
-		      setLoading(true);
-		      setError('');
-		      try {
-				        const params = new URLSearchParams({ page: String(page), limit: '50' });
-				        if (statusFilter) params.set('status', statusFilter);
-				        if (fromDate) params.set('from', fromDate);
-				        if (toDate) params.set('to', toDate);
-				  
-				        const data = await getJson<SessionsResponse>(`/api/sessions/history?${params}`);
-				        setSessions(data.sessions || []);
-				        setPagination(data.pagination || { page: 1, limit: 50, total: 0, totalPages: 1 });
-				        setCurrentPage(page);
-			  } catch (err: any) {
-				        setError(err.message || 'Failed to load session history');
-			  } finally {
-				        setLoading(false);
-			  }
-	  }, [statusFilter, fromDate, toDate]);
-	
-	  useEffect(() => {
-		      fetchSessions(1);
-	  }, []);
-	
-	  const handleSearch = () => {
-		      fetchSessions(1);
-	  };
-	
-	  const handleClear = () => {
-		      setStatusFilter('');
-		      setFromDate('');
-		      setToDate('');
-		      setTimeout(() => fetchSessions(1), 0);
-	  };
-	
-	  return (
+	  const appliedFilters = useRef({status: '', from: '', to: ''});
+  const activeRequest = useRef<AbortController | null>(null);
+  const fetchSessions = useCallback(async (page = 1, filters = appliedFilters.current) => {
+    if(filters.from && filters.to && filters.from>filters.to) {setError('The start date must be before the end date.');return;}
+    activeRequest.current?.abort(); const controller = new AbortController(); activeRequest.current=controller;
+    appliedFilters.current=filters;setLoading(true);setError('');
+    try {
+      const data = await requestJson<SessionsResponse>('/api/sessions/history',{method:'GET',params:{page,limit:50,status:filters.status,from:filters.from,to:filters.to},signal:controller.signal});
+      if(controller.signal.aborted)return;
+      setSessions(data.sessions || []);setPagination(data.pagination);setCurrentPage(page);
+    } catch(error) {if(!controller.signal.aborted)setError(error instanceof Error ? error.message : 'Failed to load session history');}
+    finally {if(!controller.signal.aborted)setLoading(false);}
+  }, []);
+  useEffect(() => {fetchSessions(1);return()=>activeRequest.current?.abort();}, [fetchSessions]);
+  const handleSearch = () => fetchSessions(1,{status:statusFilter,from:fromDate,to:toDate});
+  const handleClear = () => {setStatusFilter('');setFromDate('');setToDate('');fetchSessions(1,{status:'',from:'',to:''});};
+
+  return (
 		      <div className="space-y-6">
 			        <div>
-						<h1 className="text-2xl font-bold text-gray-900">Session History</h1>
-						        <p className="text-sm text-gray-500 mt-1">Complete log of all processed treatment sessions</p>
+						<h1 className="text-2xl font-bold text-gray-900">{t("Session History")}</h1>
+						        <p className="text-sm text-gray-500 mt-1">{t("Complete log of all processed treatment sessions")}<br/><span className="text-xs">{t("Date filters use Oman time (UTC+4).")}</span></p>
 			  </div>
 			  
 			  {/* Filters */}
@@ -124,22 +103,22 @@ export default function SessionHistoryPage() {
 						        <CardContent className="pt-4">
 									          <div className="flex flex-wrap gap-3 items-end">
 												              <div>
-																                <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
-																                <select
+																                <label htmlFor="field-app-dashboard-sessions-page-tsx-1" className="block text-xs font-medium text-gray-600 mb-1">{t("Status")}</label>
+																                <select id="field-app-dashboard-sessions-page-tsx-1"
 																					                value={statusFilter}
 																					                onChange={(e) => setStatusFilter(e.target.value)}
 																					                className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
 																					              >
-																					<option value="">All Statuses</option>
-																					<option value="COMPLETED">Completed</option>
-																					<option value="CANCELLED">Cancelled</option>
-																					<option value="NO_SHOW">No Show</option>
-																					<option value="IN_PROGRESS">In Progress</option>
+																					<option value="">{t("All Statuses")}</option>
+																					<option value="COMPLETED">{t("Completed")}</option>
+																					<option value="CANCELLED">{t("Cancelled")}</option>
+																					<option value="NO_SHOW">{t("No Show")}</option>
+																					<option value="SCHEDULED">{t("Scheduled")}</option>
 																  </select>
 												  </div>
 												              <div>
-																                <label className="block text-xs font-medium text-gray-600 mb-1">From Date</label>
-																                <input
+																                <label htmlFor="field-app-dashboard-sessions-page-tsx-2" className="block text-xs font-medium text-gray-600 mb-1">{t("From Date")}</label>
+																                <input id="field-app-dashboard-sessions-page-tsx-2"
 																					                type="date"
 																					                value={fromDate}
 																					                onChange={(e) => setFromDate(e.target.value)}
@@ -147,8 +126,8 @@ export default function SessionHistoryPage() {
 																					              />
 												  </div>
 												              <div>
-																                <label className="block text-xs font-medium text-gray-600 mb-1">To Date</label>
-																                <input
+																                <label htmlFor="field-app-dashboard-sessions-page-tsx-3" className="block text-xs font-medium text-gray-600 mb-1">{t("To Date")}</label>
+																                <input id="field-app-dashboard-sessions-page-tsx-3"
 																					                type="date"
 																					                value={toDate}
 																					                onChange={(e) => setToDate(e.target.value)}
@@ -156,8 +135,8 @@ export default function SessionHistoryPage() {
 																					              />
 												  </div>
 												              <div className="flex gap-2">
-																  <Button onClick={handleSearch} size="sm">Search</Button>
-																                <Button onClick={handleClear} variant="outline" size="sm">Clear</Button>
+																  <Button onClick={handleSearch} disabled={loading} size="sm">{t("Search")}</Button>
+																                <Button onClick={handleClear} disabled={loading} variant="outline" size="sm">{t("Clear")}</Button>
 												  </div>
 									</div>
 						</CardContent>
@@ -167,16 +146,16 @@ export default function SessionHistoryPage() {
 			        <Card>
 						        <CardHeader>
 									          <CardTitle className="flex items-center justify-between">
-												  <span>Sessions</span>
+												  <span>{t("Sessions")}</span>
 												              <span className="text-sm font-normal text-gray-500">
-																  {pagination.total} total record{pagination.total !== 1 ? 's' : ''}
+																  {t("{count} records", {count: pagination.total})}
 												  </span>
 									</CardTitle>
 						</CardHeader>
 						        <CardContent>
 									{error && (
 										            <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-4">
-											<p className="text-red-800 text-sm">{error}</p>
+											<p role="alert" className="text-red-800 text-sm">{t(error)}</p>
 											            </div>
 										          )}
 									
@@ -186,8 +165,8 @@ export default function SessionHistoryPage() {
 											            </div>
 										          ) : sessions.length === 0 ? (
 										            <div className="text-center py-12 text-gray-500">
-											<p className="text-lg font-medium">No sessions found</p>
-											<p className="text-sm mt-1">Try adjusting your filters</p>
+											<p className="text-lg font-medium">{t("No sessions found")}</p>
+											<p className="text-sm mt-1">{t("Try adjusting your filters")}</p>
 											            </div>
 										          ) : (
 										            <>
@@ -195,20 +174,20 @@ export default function SessionHistoryPage() {
 															                  <table className="w-full text-sm">
 																				                    <thead>
 																										                    <tr className="border-b border-gray-200">
-																																                      <th className="text-left py-3 px-2 font-semibold text-gray-700">Date & Time</th>
-																																                      <th className="text-left py-3 px-2 font-semibold text-gray-700">Patient</th>
-																																                      <th className="text-left py-3 px-2 font-semibold text-gray-700">Treatment</th>
-																																                      <th className="text-left py-3 px-2 font-semibold text-gray-700">Package</th>
-																																                      <th className="text-left py-3 px-2 font-semibold text-gray-700">Session #</th>
-																																                      <th className="text-left py-3 px-2 font-semibold text-gray-700">Status</th>
-																																                      <th className="text-left py-3 px-2 font-semibold text-gray-700">Processed By</th>
+																																                      <th className="text-left py-3 px-2 font-semibold text-gray-700">{t("Date & Time")}</th>
+																																                      <th className="text-left py-3 px-2 font-semibold text-gray-700">{t("Patient")}</th>
+																																                      <th className="text-left py-3 px-2 font-semibold text-gray-700">{t("Treatment")}</th>
+																																                      <th className="text-left py-3 px-2 font-semibold text-gray-700">{t("Package")}</th>
+																																                      <th className="text-left py-3 px-2 font-semibold text-gray-700">{t("Session #")}</th>
+																																                      <th className="text-left py-3 px-2 font-semibold text-gray-700">{t("Status")}</th>
+																																                      <th className="text-left py-3 px-2 font-semibold text-gray-700">{t("Processed By")}</th>
 																										</tr>
 																				  </thead>
 																				                    <tbody>
 																										{sessions.map((session) => (
 																											                      <tr key={session.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
 																												                        <td className="py-3 px-2 text-gray-600 whitespace-nowrap">
-																																			{formatDateTime(session.completedAt)}
+																																			{formatDateTime(session.completedAt, language)}
 																												</td>
 																												                        <td className="py-3 px-2">
 																																			{session.member ? (
@@ -238,7 +217,7 @@ export default function SessionHistoryPage() {
 																												</td>
 																												                        <td className="py-3 px-2">
 																																			                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[session.status] || 'bg-gray-100 text-gray-800'}`}>
-																																									                              {STATUS_LABELS[session.status] || session.status}
+																																									                              {t(STATUS_LABELS[session.status] || session.status)}
 																																			</span>
 																												</td>
 																												                        <td className="py-3 px-2 text-gray-600">
@@ -254,25 +233,23 @@ export default function SessionHistoryPage() {
 											{pagination.totalPages > 1 && (
 												                <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
 													                  <p className="text-sm text-gray-500">
-																		                      Page {pagination.page} of {pagination.totalPages}
+																		                      {t("Page {page} of {total}", {page: pagination.page, total: pagination.totalPages})}
 													</p>
 													                  <div className="flex gap-2">
 																		                      <Button
 																								                        variant="outline"
 																								                        size="sm"
 																								                        onClick={() => fetchSessions(currentPage - 1)}
-																								                        disabled={currentPage <= 1}
+																								                        disabled={loading || currentPage <= 1}
 																								                      >
-																								                        Previous
-																		  </Button>
+																								                        {t("Previous")} </Button>
 																		                      <Button
 																								                        variant="outline"
 																								                        size="sm"
 																								                        onClick={() => fetchSessions(currentPage + 1)}
-																								                        disabled={currentPage >= pagination.totalPages}
+																								                        disabled={loading || currentPage >= pagination.totalPages}
 																								                      >
-																								                        Next
-																		  </Button>
+																								                        {t("Next")} </Button>
 													</div>
 													                </div>
 												              )}

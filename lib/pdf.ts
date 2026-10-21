@@ -13,6 +13,26 @@ export const PVC_CARD_DIMENSIONS: CardDimensions = {
   bleedMargin: 2,
 };
 
+// html2canvas does not render CSS image filters. Tint card logos in its
+// isolated clone so the exported PDF matches the white on navy preview.
+async function prepareCardLogosForExport(clonedDocument: Document): Promise<void> {
+  const logos = clonedDocument.querySelectorAll<HTMLImageElement>('.card-print-surface img, .card-print-back img');
+  await Promise.all(Array.from(logos).map(async (image) => {
+    await image.decode();
+    const canvas = clonedDocument.createElement('canvas');
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    context.drawImage(image, 0, 0);
+    context.globalCompositeOperation = 'source-in';
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    image.src = canvas.toDataURL('image/png');
+    await image.decode();
+  }));
+}
+
 export async function generateCardPDF(
   frontElement: HTMLElement,
   backElement?: HTMLElement,
@@ -26,13 +46,19 @@ export async function generateCardPDF(
   });
 
   try {
-    // Front side
-    const frontCanvas = await html2canvas(frontElement, {
-      scale: 3,
+    // Capture the physical card, not its responsive page/grid wrapper.
+    const cardSurface = (element: HTMLElement, selector: string): HTMLElement => {
+      const surface = element.matches(selector) ? element : element.querySelector<HTMLElement>(selector);
+      if (!surface) throw new Error('Membership card surface not found');
+      return surface;
+    };
+    const frontCanvas = await html2canvas(cardSurface(frontElement, '.card-print-surface'), {
+      scale: 4,
       allowTaint: true,
       useCORS: true,
       logging: false,
-      backgroundColor: '#ffffff',
+      backgroundColor: '#0B1F3A',
+      onclone: prepareCardLogosForExport,
     });
 
     const frontImgData = frontCanvas.toDataURL('image/png');
@@ -41,12 +67,13 @@ export async function generateCardPDF(
     // Back side (if provided)
     if (backElement) {
       pdf.addPage([width, height], width > height ? 'landscape' : 'portrait');
-      const backCanvas = await html2canvas(backElement, {
-        scale: 3,
+      const backCanvas = await html2canvas(cardSurface(backElement, '.card-print-back'), {
+        scale: 4,
         allowTaint: true,
         useCORS: true,
         logging: false,
-        backgroundColor: '#ffffff',
+        backgroundColor: '#0B1F3A',
+        onclone: prepareCardLogosForExport,
       });
 
       const backImgData = backCanvas.toDataURL('image/png');

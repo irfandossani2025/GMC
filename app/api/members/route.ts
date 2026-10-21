@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { z } from 'zod';
+import { currentUser } from '@/lib/security/user-access';
+import { positivePage, addValidityMonths } from '@/lib/clinic-dates';
 import { createMemberSchema } from '@/lib/validators';
 import { createOrGetActiveMembershipCard } from '@/lib/cards';
 
@@ -7,10 +10,13 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
+    const actor = await currentUser(request);
+    if(!actor) return NextResponse.json({error: 'Unauthorized'}, {status:401});
+    if(!['ADMIN','SUPER_ADMIN','MANAGER'].includes(actor.role)) return NextResponse.json({error:'Forbidden'},{status:403});
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
-    const search = searchParams.get('search') || '';
+    const page = positivePage(searchParams.get('page'),1);
+    const limit = positivePage(searchParams.get('limit'),10,100);
+    const search = (searchParams.get('search') || '').trim().slice(0,200);
     const status = searchParams.get('status');
 
     const skip = (page - 1) * limit;
@@ -24,6 +30,7 @@ export async function GET(request: NextRequest) {
       ];
     }
     if (status) {
+      if(!['ACTIVE','INACTIVE','SUSPENDED','EXPIRED'].includes(status)) return NextResponse.json({error:'Invalid membership status'},{status:400});
       where.status = status;
     }
 
@@ -69,10 +76,13 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const actor = await currentUser(request);
+    if(!actor) return NextResponse.json({error:'Unauthorized'},{status:401});
+    if(!['ADMIN','SUPER_ADMIN','MANAGER'].includes(actor.role)) return NextResponse.json({error:'Forbidden'},{status:403});
     const body = await request.json();
     const data = createMemberSchema.parse(body);
 
-    const userId = request.headers.get('x-user-id');
+    const userId = actor.id;
     if (!userId) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -80,10 +90,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { generateMemberId } = await import('@/lib/auth');
-    const memberId = generateMemberId();
+    const { generateMemberId, generateTransactionId } = await import('@/lib/auth');
+    const memberId = data.patientId || generateMemberId();
 
     const { member, card } = await db.$transaction(async (tx) => {
+      const initialPackage = data.packageId ? await tx.treatmentPackage.findUnique({where:{id:data.packageId},include:{treatment:true}}) : null;
+      if(data.packageId && (!initialPackage || !initialPackage.active || !initialPackage.treatment.active)) throw new Error('The selected treatment package is no longer available.');
       const member = await tx.member.create({
         data: {
           name: data.name,
@@ -108,12 +120,19 @@ export async function POST(request: NextRequest) {
       });
 
       const { card } = await createOrGetActiveMembershipCard(tx, member);
+      if(initialPackage) {
+        await tx.memberPackage.create({data:{memberId:member.id,packageId:initialPackage.id,purchasedAt:new Date(),expiryDate:addValidityMonths(new Date(),initialPackage.validityMonths),totalSessions:initialPackage.sessionCount,usedSessions:0,remainingSessions:initialPackage.sessionCount,status:'ACTIVE'}});
+        await tx.transaction.create({data:{transactionId:generateTransactionId(),memberId:member.id,amount:initialPackage.price,type:'MEMBERSHIP_FEE',status:'COMPLETED',description:`Purchased ${initialPackage.name} package`}});
+      }
       return { member, card };
     });
 
     return NextResponse.json({ ...member, card }, { status: 201 });
   } catch (error) {
-    console.error('Create member error:', error);
+    if(error instanceof z.ZodError) return NextResponse.json({error:error.errors[0]?.message || 'Check the patient details.'},{status:400});
+    if((error as {code?:string}).code==='P2002') return NextResponse.json({error:'A patient with this phone number or patient ID already exists.'},{status:409});
+    if(error instanceof Error && error.message==='The selected treatment package is no longer available.') return NextResponse.json({error:error.message},{status:409});
+    console.error('Create member error');
     return NextResponse.json(
       { error: 'Failed to create member' },
       { status: 400 }

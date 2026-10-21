@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { positivePage, sessionDateBounds } from '@/lib/clinic-dates';
 import { db } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
@@ -11,8 +12,8 @@ export async function GET(request: NextRequest) {
 			  }
 		  
 		      const { searchParams } = new URL(request.url);
-		      const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
-		      const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '50', 10)));
+		      const page = positivePage(searchParams.get('page'),1);
+		      const limit = positivePage(searchParams.get('limit'),50,100);
 		      const skip = (page - 1) * limit;
 		      const memberId = searchParams.get('memberId') || undefined;
 		      const treatmentId = searchParams.get('treatmentId') || undefined;
@@ -23,14 +24,12 @@ export async function GET(request: NextRequest) {
 		      const where: any = {};
 		      if (memberId) where.memberId = memberId;
 		      if (treatmentId) where.treatmentId = treatmentId;
-		      if (status) where.status = status;
+		      if (status) {if(!['SCHEDULED','COMPLETED','CANCELLED','NO_SHOW'].includes(status))return NextResponse.json({error:'Invalid session status'},{status:400});where.status=status;}
 		      if (from || to) {
-				        where.completedAt = {};
-				        if (from) where.completedAt.gte = new Date(from);
-				        if (to) where.completedAt.lte = new Date(to);
-			  }
-		  
-		      const [sessions, total] = await Promise.all([
+        try {where.completedAt=sessionDateBounds(from,to);} catch(error) {return NextResponse.json({error:(error as Error).message},{status:400});}
+      }
+
+      const [sessions, total] = await Promise.all([
 				        db.session.findMany({
 							        where,
 							        skip,
@@ -80,7 +79,7 @@ export async function GET(request: NextRequest) {
 							        page,
 							        limit,
 							        total,
-							        totalPages: Math.ceil(total / limit),
+							        totalPages: Math.max(1, Math.ceil(total / limit)),
 						},
 			  });
 	  } catch (error) {

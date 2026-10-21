@@ -1,5 +1,7 @@
 'use client';
 
+import { useLanguage } from '@/components/i18n/LanguageProvider';
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
@@ -8,7 +10,7 @@ import { MembershipCardPreview } from '@/components/cards/MembershipCardPreview'
 import { getJson, postJson } from '@/lib/api-client';
 import { downloadCardPDF } from '@/lib/pdf';
 import { buildCardIssuedMessage, buildWelcomeMessage, buildWhatsAppLink } from '@/lib/whatsapp';
-import { formatDisplayDate, formatMembershipType } from '@/lib/clinic';
+import { formatMembershipType } from '@/lib/clinic';
 
 interface MemberDetailsClientProps {
   memberId: string;
@@ -96,6 +98,8 @@ interface TreatmentPackageResponse {
 }
 
 export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
+  const { t, formatDate: formatDisplayDate } = useLanguage();
+  const [loadError,setLoadError]=useState(''), [actionError,setActionError]=useState('');
   const [member, setMember] = useState<MemberResponse | null>(null);
   const [availablePackages, setAvailablePackages] = useState<TreatmentPackageResponse[]>([]);
   const [selectedPackageId, setSelectedPackageId] = useState('');
@@ -116,12 +120,11 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
 
   const fetchMember = async () => {
     try {
-      setIsLoading(true);
+      setIsLoading(true);setLoadError('');
       const response = await getJson<MemberResponse>(`/api/members/${memberId}`);
       setMember(response);
     } catch (error) {
-      console.error('Failed to fetch member details:', error);
-      setMember(null);
+      setLoadError(error instanceof Error ? error.message : 'Could not load the patient profile.');
     } finally {
       setIsLoading(false);
     }
@@ -155,11 +158,11 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
     }
 
     try {
-      setIsIssuingCard(true);
+      setIsIssuingCard(true);setActionError('');
       await postJson('/api/cards/generate', { memberId: member.id });
       await fetchMember();
     } catch (error) {
-      console.error('Failed to issue membership card:', error);
+      setActionError(error instanceof Error ? error.message : 'Could not issue the membership card.');
     } finally {
       setIsIssuingCard(false);
     }
@@ -171,14 +174,14 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
     }
 
     try {
-      setIsExportingPdf(true);
+      setIsExportingPdf(true);setActionError('');
       await downloadCardPDF(
         frontCardRef.current,
         backCardRef.current || undefined,
         `${member.memberId}-membership-card.pdf`
       );
     } catch (error) {
-      console.error('Failed to export PDF:', error);
+      setActionError('Could not export the card PDF. Please try again.');
     } finally {
       setIsExportingPdf(false);
     }
@@ -215,17 +218,17 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
   };
 
   if (isLoading) {
-    return <div className="py-16 text-center text-slate-500">Loading member details...</div>;
+    return <div className="py-16 text-center text-slate-500">{t("Loading member details...")}</div>;
   }
 
+  if(loadError) return <Card><CardContent><div className="feedback-banner error" role="alert">{t(loadError)}</div><div className="mt-4 flex gap-4"><Button onClick={fetchMember}>{t('Try again')}</Button><Link href="/dashboard/members" className="patient-name-link">{t('Back to patients')}</Link></div></CardContent></Card>;
   if (!member) {
     return (
-      <Card className="surface-panel rounded-[1.75rem] border-0 shadow-none">
+      <Card className="surface-panel rounded-xl border-0 shadow-none">
         <CardContent className="py-16 text-center">
-          <p className="text-lg font-semibold text-slate-900">Patient not found</p>
+          <p className="text-lg font-semibold text-slate-900">{t("Patient not found")}</p>
           <Link href="/dashboard/members" className="mt-4 inline-block text-primary">
-            Return to members list
-          </Link>
+            {t("Return to members list")} </Link>
         </CardContent>
       </Card>
     );
@@ -235,119 +238,113 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
   const cardMessage = buildCardIssuedMessage(member.name, member.memberId, member.expiryDate);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8">{actionError && <div role="alert" className="feedback-banner error">{t(actionError)}</div>}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <Link href="/dashboard/members" className="text-sm font-medium text-primary">
-            Back to patients
-          </Link>
+            {t("Back to patients")} </Link>
           <h1 className="page-title mt-3">{member.name}</h1>
           <p className="page-subtitle mt-3">
-            Grand Medical Care patient profile, package session balance, and printable membership card details.
-          </p>
+            {t("Grand Medical Care patient profile, package session balance, and printable membership card details.")} </p>
         </div>
         <div className="flex flex-wrap gap-3">
-          <Button variant="outline" className="rounded-2xl border-primary text-primary" onClick={() => openWhatsApp(welcomeMessage)}>
-            WhatsApp Welcome
-          </Button>
-          <Button variant="outline" className="rounded-2xl border-primary text-primary" onClick={() => openWhatsApp(cardMessage)}>
-            WhatsApp Card Ready
-          </Button>
+          <Button variant="outline" className="rounded-lg border-primary text-primary" onClick={() => openWhatsApp(welcomeMessage)}>
+            {t("WhatsApp Welcome")} </Button>
+          <Button variant="outline" className="rounded-lg border-primary text-primary" onClick={() => openWhatsApp(cardMessage)}>
+            {t("WhatsApp Card Ready")} </Button>
           <Button
             variant="primary"
-            className="rounded-2xl bg-primary hover:bg-primary/90"
+            className="rounded-lg bg-primary hover:bg-primary/90"
             isLoading={isIssuingCard}
             onClick={handleIssueCard}
           >
-            {activeCard ? 'Recheck Existing Card' : 'Issue Membership Card'}
+            {activeCard ? t("Recheck Existing Card") : t("Issue Membership Card")}
           </Button>
         </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-        <Card className="surface-panel rounded-[1.75rem] border-0 shadow-none">
+        <Card className="surface-panel rounded-xl border-0 shadow-none">
           <CardHeader>
-            <CardTitle>Patient profile</CardTitle>
+            <CardTitle>{t("Patient profile")}</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-5 sm:grid-cols-2">
             <div>
-              <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Member No.</p>
+              <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{t("Member No.")}</p>
               <p className="mt-1 font-semibold text-slate-900">{member.memberId}</p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Membership Type</p>
-              <p className="mt-1 font-semibold text-slate-900">{formatMembershipType(member.membershipType)}</p>
+              <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{t("Membership Type")}</p>
+              <p className="mt-1 font-semibold text-slate-900">{t(formatMembershipType(member.membershipType))}</p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Phone</p>
+              <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{t("Phone")}</p>
               <p className="mt-1 font-semibold text-slate-900">{member.phone}</p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Patient ID</p>
-              <p className="mt-1 font-semibold text-slate-900">{member.email || 'N/A'}</p>
+              <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{t("Patient ID")}</p>
+              <p className="mt-1 font-semibold text-slate-900">{member.email || t("N/A")}</p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Status</p>
-              <p className="mt-1 font-semibold text-slate-900">{member.status}</p>
+              <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{t("Status")}</p>
+              <p className="mt-1 font-semibold text-slate-900">{t(member.status)}</p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Expiry Date</p>
+              <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{t("Expiry Date")}</p>
               <p className="mt-1 font-semibold text-slate-900">{formatDisplayDate(member.expiryDate)}</p>
             </div>
             <div className="sm:col-span-2">
-              <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Address</p>
-              <p className="mt-1 font-semibold text-slate-900">{member.address || 'N/A'}</p>
+              <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{t("Address")}</p>
+              <p className="mt-1 font-semibold text-slate-900">{member.address || t("N/A")}</p>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="surface-panel rounded-[1.75rem] border-0 shadow-none">
+        <Card className="surface-panel rounded-xl border-0 shadow-none">
           <CardHeader>
-            <CardTitle>Card status</CardTitle>
+            <CardTitle>{t("Card status")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="rounded-2xl bg-slate-50 p-4">
-              <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Current state</p>
+            <div className="rounded-lg bg-slate-50 p-4">
+              <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{t("Current state")}</p>
               <p className="mt-2 text-lg font-semibold text-slate-900">
-                {activeCard ? 'Membership card issued' : 'Waiting for first card issuance'}
+                {activeCard ? t("Membership card issued") : t("Waiting for first card issuance")}
               </p>
             </div>
             {activeCard ? (
               <div className="space-y-2 text-sm text-slate-600">
-                <p><span className="font-semibold text-slate-900">Card Number:</span> {activeCard.cardNumber}</p>
-                <p><span className="font-semibold text-slate-900">Barcode:</span> {activeCard.barcode}</p>
+                <p><span className="font-semibold text-slate-900">{t("Card Number:")}</span> {activeCard.cardNumber}</p>
+                <p><span className="font-semibold text-slate-900">{t("Barcode:")}</span> {activeCard.barcode}</p>
               </div>
             ) : (
               <p className="text-sm text-slate-500">
-                Use the issue button to create the first Grand Medical Care PVC card and barcode for this member.
-              </p>
+                {t("Use the issue button to create the first Grand Medical Care PVC card and barcode for this member.")} </p>
             )}
           </CardContent>
         </Card>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <Card className="surface-panel rounded-[1.75rem] border-0 shadow-none">
+        <Card className="surface-panel rounded-xl border-0 shadow-none">
           <CardHeader>
-            <CardTitle>Package balances</CardTitle>
+            <CardTitle>{t("Package balances")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {member.packages?.length ? (
               <div className="space-y-4">
                 {activePackages.length === 0 ? (
-                  <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
-                    No active package balance is available. Add a new package to give this member sessions.
-                  </div>
+                  <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
+                    {t("No active package balance is available. Add a new package to give this member sessions.")} </div>
                 ) : (
                   <div className="grid gap-4 md:grid-cols-2">
                     {activePackages.map((pkg) => (
-                      <div key={pkg.id} className="rounded-3xl border border-slate-200 p-4">
+                      <div key={pkg.id} className="rounded-xl border border-slate-200 p-4">
                         <p className="text-sm font-semibold text-slate-900">{pkg.package.name}</p>
                         <p className="text-sm text-slate-500">{pkg.package.treatment.name}</p>
                         <div className="mt-3 grid gap-2 text-sm text-slate-700 sm:grid-cols-3">
-                          <span className="rounded-full bg-slate-100 px-3 py-1">{pkg.remainingSessions} left</span>
-                          <span className="rounded-full bg-slate-100 px-3 py-1">Used {pkg.usedSessions}</span>
-                          <span className="rounded-full bg-slate-100 px-3 py-1">Expires {formatDisplayDate(pkg.expiryDate)}</span>
+                          <span className="rounded-full bg-slate-100 px-3 py-1">{pkg.remainingSessions} {t("left")}</span>
+                          <span className="rounded-full bg-slate-100 px-3 py-1">{t("Used")} {pkg.usedSessions}</span>
+                          <span className="rounded-full bg-slate-100 px-3 py-1">{t("Expires")} {formatDisplayDate(pkg.expiryDate)}</span>
                         </div>
                       </div>
                     ))}
@@ -355,37 +352,36 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
                 )}
               </div>
             ) : (
-              <p className="text-sm text-slate-500">No packages have been purchased for this member yet.</p>
+              <p className="text-sm text-slate-500">{t("No packages have been purchased for this member yet.")}</p>
             )}
           </CardContent>
         </Card>
 
-        <Card className="surface-panel rounded-[1.75rem] border-0 shadow-none">
+        <Card className="surface-panel rounded-xl border-0 shadow-none">
           <CardHeader>
-            <CardTitle>Purchase package</CardTitle>
+            <CardTitle>{t("Purchase package")}</CardTitle>
           </CardHeader>
           <CardContent>
             {packageMessage && (
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                {packageMessage}
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                {t(packageMessage)}
               </div>
             )}
 
             <div className="space-y-4">
               <div>
-                <label className="mb-2 block text-sm font-medium text-gray-700">Choose package</label>
-                <select
+                <label htmlFor="field-components-members-MemberDetailsClient-tsx-1" className="mb-2 block text-sm font-medium text-gray-700">{t("Choose package")}</label>
+                <select id="field-components-members-MemberDetailsClient-tsx-1"
                   className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   value={selectedPackageId}
                   onChange={(event) => setSelectedPackageId(event.target.value)}
                 >
                   {availablePackages.length === 0 ? (
-                    <option value="">No service packages configured</option>
+                    <option value="">{t("No service packages configured")}</option>
                   ) : (
                     availablePackages.map((option) => (
                       <option key={option.id} value={option.id}>
-                        {option.name} • {option.treatment.name} • {option.sessionCount} sessions
-                      </option>
+                        {option.name} • {option.treatment.name} • {option.sessionCount} {t("sessions")} </option>
                     ))
                   )}
                 </select>
@@ -397,30 +393,27 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
                 isLoading={isPurchasingPackage}
                 disabled={!selectedPackageId || availablePackages.length === 0}
               >
-                Add session package
-              </Button>
+                {t("Add session package")} </Button>
             </div>
           </CardContent>
         </Card>
       </div>
 
       {activeCard && (
-        <Card className="surface-panel rounded-[1.75rem] border-0 shadow-none">
+        <Card className="surface-panel rounded-xl border-0 shadow-none">
           <CardHeader className="flex flex-col gap-4 border-b border-slate-200/80 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle>Printable membership card</CardTitle>
+              <CardTitle>{t("Printable membership card")}</CardTitle>
               <p className="mt-2 text-sm text-slate-500">
-                Front and back PVC card layout sized for professional printing.
-              </p>
+                {t("Front and back PVC card layout sized for professional printing.")} </p>
             </div>
             <Button
               variant="primary"
-              className="rounded-2xl bg-primary hover:bg-primary/90"
+              className="rounded-lg bg-primary hover:bg-primary/90"
               isLoading={isExportingPdf}
               onClick={handleExportPdf}
             >
-              Export PDF
-            </Button>
+              {t("Export PDF")} </Button>
           </CardHeader>
           <CardContent className="grid gap-6 xl:grid-cols-2">
             <div ref={frontCardRef}>
@@ -448,28 +441,28 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
       )}
 
       {member.sessions?.length ? (
-        <Card className="surface-panel rounded-[1.75rem] border-0 shadow-none">
+        <Card className="surface-panel rounded-xl border-0 shadow-none">
           <CardHeader>
-            <CardTitle>Recent session activity</CardTitle>
+            <CardTitle>{t("Recent session activity")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {member.sessions.map((session) => (
-              <div key={session.id} className="rounded-3xl border border-slate-200 p-4">
+              <div key={session.id} className="rounded-xl border border-slate-200 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="font-semibold text-slate-900">Session {session.sessionNumber ?? '–'}</p>
+                    <p className="font-semibold text-slate-900">{t("Session")} {session.sessionNumber ?? '–'}</p>
                     <p className="text-sm text-slate-600">
-                      {session.memberPackage?.package.name || session.treatment?.name || 'Session record'}
+                      {session.memberPackage?.package.name || session.treatment?.name || t("Session record")}
                     </p>
                   </div>
                   <p className="text-sm text-slate-500">{formatDisplayDate(session.completedAt)}</p>
                 </div>
-                <p className="mt-2 text-sm text-slate-500">Status: {session.status}</p>
+                <p className="mt-2 text-sm text-slate-500">{t("Status:")} {t(session.status)}</p>
                 {session.processedByUser?.name && (
-                  <p className="mt-1 text-sm text-slate-500">Processed by {session.processedByUser.name}</p>
+                  <p className="mt-1 text-sm text-slate-500">{t("Processed by")} {session.processedByUser.name}</p>
                 )}
                 {session.notes && (
-                  <p className="mt-2 text-sm text-slate-500">Notes: {session.notes}</p>
+                  <p className="mt-2 text-sm text-slate-500">{t("Notes:")} {session.notes}</p>
                 )}
               </div>
             ))}

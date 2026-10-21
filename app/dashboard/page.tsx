@@ -1,179 +1,86 @@
 'use client';
 
+import { useLanguage } from '@/components/i18n/LanguageProvider';
+
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { AppIcon } from '@/components/ui/AppIcon';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { formatDisplayDate } from '@/lib/clinic';
 import { getJson } from '@/lib/api-client';
 
 interface SessionStats {
-	  allTime: number;
-	  today: number;
-	  thisWeek: number;
-	  thisMonth: number;
+  allTime: number;
+  today: number;
+  thisWeek: number;
+  thisMonth: number;
 }
 
 interface DashboardStats {
-	  totalMembers: number;
-	  activeMembers: number;
-	  cardsIssued: number;
-	  expiringSoon: number;
-	  activeMemberPackages: number;
-	  sessions: SessionStats;
-	  expiringMembers: Array<{
-		      id: string;
-		      memberId: string;
-		      name: string;
-		      expiryDate: string;
-	  }>;
+  totalMembers: number;
+  activeMembers: number;
+  cardsIssued: number;
+  expiringSoon: number;
+  activeMemberPackages: number;
+  sessions: SessionStats;
+  expiringMembers: Array<{
+    id: string;
+    memberId: string;
+    name: string;
+    expiryDate: string;
+  }>;
 }
 
 export default function DashboardPage() {
-	  const [stats, setStats] = useState<DashboardStats>({
-		      totalMembers: 0,
-		      activeMembers: 0,
-		      cardsIssued: 0,
-		      expiringSoon: 0,
-		      activeMemberPackages: 0,
-		      sessions: { allTime: 0, today: 0, thisWeek: 0, thisMonth: 0 },
-		      expiringMembers: [],
-	  });
-	  const [isLoading, setIsLoading] = useState(true);
-	
-	  useEffect(() => {
-		      const fetchStats = async () => {
-				        try {
-							        const data = await getJson<DashboardStats>('/api/dashboard/stats');
-							        setStats(data);
-						} catch (error) {
-							        console.error('Failed to fetch dashboard stats:', error);
-						} finally {
-							        setIsLoading(false);
-						}
-			  };
-		  
-		      fetchStats();
-	  }, []);
-	
-	  return (
-		      <div className="space-y-6">
-			        <div>
-						<h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-						<p className="mt-1 text-slate-500">Welcome back. Here is a summary of your clinic.</p>
-			  </div>
-			  
-			  {/* Key stats */}
-			        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-						        <Card>
-									          <CardContent className="pt-6">
-												  <p className="text-sm font-medium text-slate-500">Total patients</p>
-												              <p className="mt-1 text-3xl font-bold text-slate-900">
-																  {isLoading ? '–' : stats.totalMembers}
-												  </p>
-									</CardContent>
-						</Card>
-						        <Card>
-									          <CardContent className="pt-6">
-												  <p className="text-sm font-medium text-slate-500">Active patients</p>
-												              <p className="mt-1 text-3xl font-bold text-emerald-600">
-																  {isLoading ? '–' : stats.activeMembers}
-												  </p>
-									</CardContent>
-						</Card>
-						        <Card>
-									          <CardContent className="pt-6">
-												  <p className="text-sm font-medium text-slate-500">Sessions today</p>
-												              <p className="mt-1 text-3xl font-bold text-primary">
-																  {isLoading ? '–' : stats.sessions?.today ?? 0}
-												  </p>
-									</CardContent>
-						</Card>
-						        <Card>
-									          <CardContent className="pt-6">
-												  <p className="text-sm font-medium text-slate-500">Expiring soon</p>
-												              <p className="mt-1 text-3xl font-bold text-amber-600">
-																  {isLoading ? '–' : stats.expiringSoon}
-												  </p>
-									</CardContent>
-						</Card>
-			  </div>
-			  
-			  {/* Secondary stats */}
-			        <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
-						        <Card>
-									          <CardContent className="pt-6">
-												  <p className="text-sm font-medium text-slate-500">Cards issued</p>
-												              <p className="mt-1 text-2xl font-bold text-slate-900">
-																  {isLoading ? '–' : stats.cardsIssued}
-												  </p>
-									</CardContent>
-						</Card>
-						        <Card>
-									          <CardContent className="pt-6">
-												  <p className="text-sm font-medium text-slate-500">Sessions this month</p>
-												              <p className="mt-1 text-2xl font-bold text-slate-900">
-																  {isLoading ? '–' : stats.sessions?.thisMonth ?? 0}
-												  </p>
-									</CardContent>
-						</Card>
-						        <Card>
-									          <CardContent className="pt-6">
-												  <p className="text-sm font-medium text-slate-500">Active packages</p>
-												              <p className="mt-1 text-2xl font-bold text-slate-900">
-																  {isLoading ? '–' : stats.activeMemberPackages ?? 0}
-												  </p>
-									</CardContent>
-						</Card>
-			  </div>
-			  
-			  {/* Quick actions */}
-			        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-						        <Link href="/dashboard/scan" className="rounded-2xl bg-primary p-4 text-center text-white hover:opacity-90 transition-opacity">
-									<p className="text-lg font-semibold">Scan card</p>
-									<p className="mt-1 text-sm text-primary-foreground/80">Process a session</p>
-						</Link>
-						        <Link href="/dashboard/members/new" className="rounded-2xl bg-slate-100 p-4 text-center text-slate-800 hover:bg-slate-200 transition-colors">
-									<p className="text-lg font-semibold">New patient</p>
-									<p className="mt-1 text-sm text-slate-500">Register a patient</p>
-						</Link>
-						        <Link href="/dashboard/sessions" className="rounded-2xl bg-slate-100 p-4 text-center text-slate-800 hover:bg-slate-200 transition-colors">
-									<p className="text-lg font-semibold">Session log</p>
-									<p className="mt-1 text-sm text-slate-500">View history</p>
-						</Link>
-						        <Link href="/dashboard/reports" className="rounded-2xl bg-slate-100 p-4 text-center text-slate-800 hover:bg-slate-200 transition-colors">
-									<p className="text-lg font-semibold">Reports</p>
-									<p className="mt-1 text-sm text-slate-500">View stats</p>
-						</Link>
-			  </div>
-			  
-			  {/* Upcoming expiries */}
-			        <Card>
-						        <CardHeader>
-									<CardTitle>Upcoming expiries</CardTitle>
-						</CardHeader>
-						        <CardContent>
-									{isLoading ? (
-										            <div className="py-8 text-center text-slate-500">Loading dashboard insights...</div>
-										          ) : stats.expiringMembers.length === 0 ? (
-										            <div className="py-8 text-center text-slate-500">No memberships are expiring within the next 30 days.</div>
-										          ) : (
-										            <div className="space-y-4">
-											{stats.expiringMembers.map((member) => (
-												                <Link key={member.id} href={`/dashboard/members/${member.id}`} className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-4 hover:bg-slate-100 transition-colors">
-													                  <div>
-																		                      <p className="font-semibold text-slate-900">{member.name}</p>
-																		  <p className="text-sm text-slate-500">{member.memberId}</p>
-													</div>
-													                  <div className="text-right">
-																		                      <p className="text-sm font-medium text-slate-700">Expiry date</p>
-																		                      <p className="text-sm text-slate-500">{formatDisplayDate(member.expiryDate)}</p>
-													</div>
-													                </Link>
-												              ))}
-											            </div>
-										          )}
-						</CardContent>
-			  </Card>
-			      </div>
-		    );
+  const { t, formatDate: formatDisplayDate } = useLanguage();
+  const [stats, setStats] = useState<DashboardStats>({
+    totalMembers: 0,
+    activeMembers: 0,
+    cardsIssued: 0,
+    expiringSoon: 0,
+    activeMemberPackages: 0,
+    sessions: { allTime: 0, today: 0, thisWeek: 0, thisMonth: 0 },
+    expiringMembers: [],
+  });
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+
+  const [retry,setRetry]=useState(0);
+  useEffect(() => {
+    setIsLoading(true);setLoadError(false);
+    const fetchStats = async () => {
+      try {
+        const data = await getJson<DashboardStats>('/api/dashboard/stats');
+        setStats(data);
+      } catch (error) {
+        setLoadError(true);
+        console.error('Failed to fetch dashboard stats:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchStats();
+  }, [retry]);
+
+  const metrics = [
+    {label: 'Total patients', value: stats.totalMembers, icon: 'patients', note: 'Registered in your clinic'},
+    {label: 'Active memberships', value: stats.activeMembers, icon: 'shield', note: 'Current patient memberships'},
+    {label: 'Sessions today', value: stats.sessions?.today ?? 0, icon: 'scan', note: 'Treatment sessions recorded'},
+    {label: 'Expiring soon', value: stats.expiringSoon, icon: 'sessions', note: 'Within the next 30 days'},
+  ];
+  return <div className="space-y-6 dashboard-overview">
+    <div className="overview-heading"><div><p className="section-eyebrow">{t("CLINIC OVERVIEW")}</p><h1>{t("Operational dashboard")}</h1><p className="mt-2 text-slate-500">{t("A clear view of your patients, memberships, and daily activity.")}</p></div><Link href="/dashboard/reports" className="overview-report-link">{t("View reports")} <AppIcon name="arrow" /></Link></div>
+    {loadError && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{t("Dashboard information could not be loaded. Please refresh the page to try again.")} <button className="underline font-semibold" onClick={()=>setRetry(value=>value+1)}>{t("Try again")}</button></div>}
+    <div className="overview-metrics">{metrics.map(metric => <Card key={metric.label} className="metric-panel"><CardContent><div className="metric-top"><span>{t(metric.label)}</span><span className="metric-icon"><AppIcon name={metric.icon} /></span></div><p className="metric-value">{isLoading || loadError ? '—' : metric.value.toLocaleString()}</p><p className="metric-note">{t(metric.note)}</p></CardContent></Card>)}</div>
+    <Card className="overview-summary"><CardContent><div><span>{t("Cards issued")}</span><strong>{isLoading || loadError ? '—' : stats.cardsIssued.toLocaleString()}</strong></div><div><span>{t("Sessions this month")}</span><strong>{isLoading || loadError ? '—' : (stats.sessions?.thisMonth ?? 0).toLocaleString()}</strong></div><div><span>{t("Active packages")}</span><strong>{isLoading || loadError ? '—' : (stats.activeMemberPackages ?? 0).toLocaleString()}</strong></div></CardContent></Card>
+    <div><div className="section-heading"><h2>{t("Quick actions")}</h2><p>{t("Everyday clinic tasks")}</p></div><div className="overview-actions">{[
+      {href: '/dashboard/members/new', icon: 'patients', title: 'Register patient', detail: 'Create a patient membership'},
+      {href: '/dashboard/scan', icon: 'scan', title: 'Scan membership card', detail: 'Find a patient and process a session'},
+      {href: '/dashboard/sessions', icon: 'sessions', title: 'Review sessions', detail: 'Browse treatment session history'},
+      {href: '/dashboard/treatments', icon: 'treatments', title: 'Manage treatments', detail: 'Maintain treatments and packages'},
+    ].map(action => <Link href={action.href} className="quick-action" key={action.href}><span className="quick-action-icon"><AppIcon name={action.icon} /></span><div><strong>{t(action.title)}</strong><p>{t(action.detail)}</p></div><AppIcon name="arrow" /></Link>)}</div></div>
+    <Card><CardHeader className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle>{t("Membership renewals")}</CardTitle><p className="mt-1 text-sm text-slate-500">{t("Patients with memberships expiring in the next 30 days")}</p></div><Link href="/dashboard/members" className="text-sm font-medium text-primary">{t("View all patients →")}</Link></CardHeader><CardContent>
+      {isLoading ? <div className="empty-state" role="status">{t("Loading membership information…")}</div> : loadError ? <div className="empty-state">{t("Membership information is currently unavailable.")}</div> : stats.expiringMembers.length === 0 ? <div className="empty-state"><span className="empty-state-icon"><AppIcon name="shield" /></span><strong>{t("No upcoming renewals")}</strong><p>{t("No memberships are expiring within the next 30 days.")}</p></div> : <div className="renewal-list">{stats.expiringMembers.map(member => <Link key={member.id} href={`/dashboard/members/${member.id}`} className="renewal-row"><div><strong>{member.name}</strong><p>{member.memberId}</p></div><span>{t("Expires {date}", {date: formatDisplayDate(member.expiryDate)})}</span><AppIcon name="arrow" /></Link>)}</div>}
+    </CardContent></Card>
+  </div>;
 }

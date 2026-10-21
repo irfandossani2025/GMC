@@ -205,3 +205,14 @@ npx prisma generate
 ```
 
 These are optional for local work only. Production deployment on the shared host should use the Plesk UI plus the included SQL import file.
+
+## Separate Super Admin
+
+- Owner sign-in: `/auth/super-admin`. Existing staff and admin sign-in remains `/auth/login`.
+- `SUPER_ADMIN` can create and manage Admin and Staff accounts. Admin accounts can manage Staff only.
+- User management rechecks the signed cookie against the current active database account. Admins cannot edit Super Admin credentials or permissions.
+- The owner account cannot be demoted or deactivated through user management. Changes are audited without recording passwords.
+
+First account provisioning remains disabled by default. After the hosting owner approves the intended recipient, set `SUPER_ADMIN_SETUP_OWNER` to the existing administrator's email and `SUPER_ADMIN_SETUP_EMAIL` to the new, separate Super Admin email in Plesk. Restart the application and open `/dashboard/super-admin-setup` while signed in as that designated administrator. The owner must enter and confirm their password and submit the access consent themselves. Provisioning closes after the first Super Admin is created. Remove the two setup environment variables afterwards and restart.
+
+First-account provisioning adds the enum value through the application connection before creating the account. You can also prepare the enum value using `npm run superadmin:prepare` when the command runner has the correct database configuration, then regenerate Prisma and build. Never reset or push the live schema. Validate permission boundaries with `node --test tests/super-admin.cjs` and run the production build before deployment.

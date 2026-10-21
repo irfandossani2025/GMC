@@ -1,116 +1,57 @@
 'use client';
-
+import { useLanguage } from '@/components/i18n/LanguageProvider';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { formatDisplayDate, formatMembershipType } from '@/lib/clinic';
-import { getJson } from '@/lib/api-client';
-
-interface Member {
-  id: string;
-  memberId: string;
-  name: string;
-  phone: string;
-  email?: string;
-  membershipType: string;
-  status: string;
-  expiryDate: string;
-  cardIssued: boolean;
-}
-
-interface MembersResponse {
-  data: Member[];
-}
-
+import { formatMembershipType } from '@/lib/clinic';
+import { requestJson } from '@/lib/api-client';
+interface Member {id: string; memberId: string; name: string; phone: string; membershipType: string; status: string; expiryDate: string; cardIssued: boolean;}
+interface MembersResponse {data: Member[]; pagination: {total: number; page: number; limit: number; pages: number};}
 export default function MembersPage() {
-  const [members, setMembers] = useState<Member[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
-
+  const {t} = useLanguage();
+  const [members, setMembers] = useState<Member[]>([]), [isLoading, setIsLoading] = useState(true);
+  const [search, setSearch] = useState(''), [query, setQuery] = useState(''), [status, setStatus] = useState('');
+  const [page, setPage] = useState(1), [total, setTotal] = useState(0), [pages, setPages] = useState(1);
+  const [error, setError] = useState(''), [retry, setRetry] = useState(0);
+  useEffect(() => {const timer = setTimeout(() => {setQuery(search.trim());setPage(1);}, 300);return () => clearTimeout(timer);}, [search]);
   useEffect(() => {
-    fetchMembers();
-  }, [page, search]);
-
-  const fetchMembers = async () => {
-    try {
-      setIsLoading(true);
-      const response = await getJson<MembersResponse>('/api/members', {
-        page,
-        search,
-        limit: 10,
-      });
-      setMembers(response.data);
-    } catch (error) {
-      console.error('Failed to fetch members:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Patients</h1>
-          <p className="text-gray-600 mt-1">Manage patient records</p>
-        </div>
-        <Link href="/dashboard/members/new">
-          <Button variant="primary">Add New Patient</Button>
-        </Link>
-      </div>
-
-      {/* Search */}
-      <Card>
-        <CardContent className="pt-6">
-          <Input
-            type="text"
-            placeholder="Search by name, phone, or member ID..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-          />
-        </CardContent>
-      </Card>
-
-      {/* Patients Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Patient List</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="text-center py-8 text-gray-500">Loading...</div>
-          ) : members.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">No patients found</div>
-          ) : (
+    const controller = new AbortController(); setIsLoading(true); setError('');
+    requestJson<MembersResponse>('/api/members', {method: 'GET', params: {page, search: query, status, limit: 10}, signal: controller.signal})
+      .then(response => {if(controller.signal.aborted)return;setMembers(response.data);setTotal(response.pagination.total);setPages(Math.max(1,response.pagination.pages));})
+      .catch(error => {if(!controller.signal.aborted)setError(error instanceof Error ? error.message : 'Failed to fetch members');})
+      .finally(() => {if(!controller.signal.aborted)setIsLoading(false);});
+    return () => controller.abort();
+  }, [page, query, status, retry]);
+  function clear() {setSearch('');setQuery('');setStatus('');setPage(1);}
+  return <div className="space-y-6">
+    <div className="flex flex-wrap items-start justify-between gap-4"><div><h1>{t('Patients')}</h1><p className="mt-2 text-sm text-slate-500">{t('Find a patient, check their membership, or register someone new.')}</p></div><Link href="/dashboard/members/new" className="topbar-primary">+ {t('Add New Patient')}</Link></div>
+    <Card><CardContent><div className="patient-search-toolbar"><Input type="search" label={t('Search patients')} placeholder={t('Search by name, phone, or member ID...')} value={search} onChange={e=>setSearch(e.target.value)} autoComplete="off"/><div><label htmlFor="patient-status">{t('Membership status')}</label><select id="patient-status" className="mt-1 w-full px-3 py-2" value={status} onChange={e=>{setStatus(e.target.value);setPage(1);}}><option value="">{t('All Statuses')}</option>{['ACTIVE','INACTIVE','EXPIRED','SUSPENDED'].map(value=><option key={value} value={value}>{t(value)}</option>)}</select></div>{(search || status) && <Button type="button" variant="outline" onClick={clear}>{t('Clear filters')}</Button>}</div></CardContent></Card>
+    <Card><CardHeader className="flex flex-wrap items-center justify-between gap-2"><CardTitle>{t('Patient List')}</CardTitle><p className="text-xs text-slate-500" role="status">{!isLoading && !error && t('{count} patients',{count: total})}</p></CardHeader><CardContent aria-busy={isLoading}>
+      {error ? <div className="feedback-banner error" role="alert"><p>{t(error)}</p><Button variant="outline" size="sm" onClick={()=>setRetry(value=>value+1)}>{t('Try again')}</Button></div> : isLoading ? <div className="empty-state" role="status">{t('Loading...')}</div> : members.length===0 ? <div className="empty-state"><strong>{t(query || status ? 'No patients match these filters.' : 'No patients registered yet.')}</strong><p>{t(query || status ? 'Try a different name, phone number or membership status.' : 'Register the first patient to create their membership card.')}</p>{query || status ? <Button type="button" variant="outline" onClick={clear}>{t('Clear filters')}</Button> : <Link className="patient-name-link" href="/dashboard/members/new">{t('Register patient')}</Link>}</div> : <>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Patient ID</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Patient Name</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Phone</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Type</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Status</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Card</th>
-                    <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">Actions</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">{t("Patient ID")}</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">{t("Patient Name")}</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">{t("Phone")}</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">{t("Type")}</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">{t("Status")}</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">{t("Card")}</th>
+                    <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">{t("Actions")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {members.map((member) => (
                     <tr key={member.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 text-sm text-gray-900 font-mono">{member.memberId}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900">{member.name}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900"><Link href={`/dashboard/members/${member.id}`} className="patient-name-link"><bdi>{member.name}</bdi></Link></td>
                       <td className="px-6 py-4 text-sm text-gray-600">{member.phone}</td>
                       <td className="px-6 py-4 text-sm">
                         <span className="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                          {formatMembershipType(member.membershipType)}
+                          {t(formatMembershipType(member.membershipType))}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-sm">
@@ -123,7 +64,7 @@ export default function MembersPage() {
                               : 'bg-red-100 text-red-800'
                           }`}
                         >
-                          {member.status}
+                          {t(member.status)}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-sm">
@@ -134,12 +75,12 @@ export default function MembersPage() {
                               : 'bg-yellow-100 text-yellow-800'
                           }`}
                         >
-                          {member.cardIssued ? 'Issued' : 'Pending'}
+                          {member.cardIssued ? t("Issued") : t("Pending")}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-sm text-right space-x-2">
                         <Link href={`/dashboard/members/${member.id}`}>
-                          <Button variant="outline" size="sm">View</Button>
+                          <span className="patient-view-link">{t("View")}</span>
                         </Link>
                       </td>
                     </tr>
@@ -147,9 +88,8 @@ export default function MembersPage() {
                 </tbody>
               </table>
             </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  );
+      <div className="table-pagination"><p>{t('Showing {start}–{end} of {total}',{start:(page-1)*10+1,end:Math.min(page*10,total),total})}</p><div className="flex items-center gap-3"><Button variant="outline" size="sm" onClick={()=>setPage(value=>value-1)} disabled={isLoading || page<=1}>{t('Previous')}</Button><span>{t('Page {page} of {total}',{page,total:pages})}</span><Button variant="outline" size="sm" onClick={()=>setPage(value=>value+1)} disabled={isLoading || page>=pages}>{t('Next')}</Button></div></div>
+      </>}
+    </CardContent></Card>
+  </div>;
 }

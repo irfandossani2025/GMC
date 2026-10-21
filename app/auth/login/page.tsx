@@ -1,5 +1,7 @@
 'use client';
 
+import { LanguageSwitcher, useLanguage } from '@/components/i18n/LanguageProvider';
+
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
@@ -9,6 +11,7 @@ import { ClinicLogo } from '@/components/branding/ClinicLogo';
 import { postJson } from '@/lib/api-client';
 
 export default function LoginPage() {
+  const { t } = useLanguage();
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -45,36 +48,34 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4 py-12">
-      <div className="w-full max-w-md">
+    <div className="auth-page"><LanguageSwitcher className="auth-language-switch" />
+      <div className="auth-layout">
         {/* Header */}
-        <div className="mb-8 rounded-[2rem] border border-white/60 bg-white/70 p-6 shadow-[0_25px_70px_rgba(24,91,115,0.12)] backdrop-blur">
-          <ClinicLogo />
+        <div className="auth-brand-panel">
+          <ClinicLogo /><div className="auth-intro"><span>{t("CLINIC OPERATIONS")}</span><h1>{t("Better care starts with")}<br />{t("a connected practice.")}</h1></div>
           <p className="mt-5 text-sm leading-6 text-slate-600">
-            Secure access for Grand Medical Center staff to manage members, barcodes, printable PVC cards, and clinic reports.
-          </p>
+            {t("Secure access for Grand Medical Center staff to manage members, barcodes, printable PVC cards, and clinic reports.")} </p>
         </div>
 
         {/* Login Form */}
-        <Card className="surface-panel overflow-hidden rounded-[2rem] border-0 shadow-none">
+        <Card className="auth-form-panel">
           <CardContent className="pt-8">
             <div className="mb-6">
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-primary/70">
-                Staff Login
-              </p>
+                {t("Staff Login")} </p>
               <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-900">
-                Membership Operations Console
-              </h2>
+                {t("Welcome back")} </h2>
             </div>
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
                 <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-600">
-                  {error}
+                  {t(error)}
                 </div>
               )}
 
               <Input
-                label="Email Address"
+                label={t("Email Address")}
+                autoComplete="username"
                 type="email"
                 placeholder="staff@gmc.com"
                 value={email}
@@ -83,7 +84,8 @@ export default function LoginPage() {
               />
 
               <Input
-                label="Password"
+                label={t("Password")}
+                autoComplete="current-password"
                 type="password"
                 placeholder="••••••••"
                 value={password}
@@ -98,8 +100,7 @@ export default function LoginPage() {
                 className="mt-6 w-full rounded-2xl bg-primary hover:bg-primary/90"
                 isLoading={isLoading}
               >
-                Sign In
-              </Button>
+                {t("Sign In")} </Button>
             </form>
           </CardContent>
         </Card>

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { LanguageProvider } from '@/components/i18n/LanguageProvider';
 import { SiteFooter } from '@/components/branding/SiteFooter';
 
 export const metadata: Metadata = {
@@ -15,14 +16,14 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <div className="min-h-screen bg-app text-slate-900">
+        <LanguageProvider><div className="min-h-screen bg-app text-slate-900">
           <div className="flex min-h-screen flex-col">
             <div className="flex-1">
               {children}
             </div>
             <SiteFooter />
           </div>
-        </div>
+        </div></LanguageProvider>
       </body>
     </html>
   );

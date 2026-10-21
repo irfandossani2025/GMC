@@ -8,9 +8,11 @@ interface BarcodeSvgProps {
   value: string;
   className?: string;
   color?: string;
+  backgroundColor?: string;
+  preserveAspectRatio?: string;
 }
 
-export function BarcodeSvg({ value, className = '', color = '#000000' }: BarcodeSvgProps) {
+export function BarcodeSvg({ value, className = '', color = '#000000', backgroundColor = '#ffffff', preserveAspectRatio = 'xMidYMid meet' }: BarcodeSvgProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   useEffect(() => {
@@ -25,10 +27,10 @@ export function BarcodeSvg({ value, className = '', color = '#000000' }: Barcode
       height: options.height,
       displayValue: false,
       margin: options.margin,
-      background: '#ffffff',
+      background: backgroundColor,
       lineColor: color,
     });
-  }, [value, color]);
+  }, [value, color, backgroundColor]);
 
-  return <svg ref={svgRef} aria-label={getBarcodeImageAlt(value)} className={className} />;
+  return <svg ref={svgRef} preserveAspectRatio={preserveAspectRatio} aria-label={getBarcodeImageAlt(value)} className={className} />;
 }

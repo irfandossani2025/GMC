@@ -1,107 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import bcrypt from 'bcryptjs';
+import { hashPassword } from '@/lib/auth';
+import { currentUser, isAdministrator, canManageUser } from '@/lib/security/user-access';
 import { z } from 'zod';
-
 export const dynamic = 'force-dynamic';
-
-const updateUserSchema = z.object({
-	  name: z.string().min(2).optional(),
-	  email: z.string().email().optional(),
-	  password: z.string().min(8).optional(),
-	  role: z.enum(['ADMIN', 'STAFF']).optional(),
-	  active: z.boolean().optional(),
-});
-
-export async function PATCH(
-	  request: NextRequest,
-	{ params }: { params: { id: string } }
-) {
-	  try {
-		      const requestingUserId = request.headers.get('x-user-id');
-		      const requestingUserRole = request.headers.get('x-user-role');
-		      if (!requestingUserId) {
-				        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-			  }
-		      if (requestingUserRole !== 'ADMIN') {
-				        return NextResponse.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
-			  }
-		  
-		      const target = await db.user.findUnique({ where: { id: params.id } });
-		      if (!target) {
-				        return NextResponse.json({ error: 'User not found' }, { status: 404 });
-			  }
-		  
-		      const body = await request.json();
-		      const data = updateUserSchema.parse(body);
-		  
-		      const updateData: any = {};
-		      if (data.name !== undefined) updateData.name = data.name;
-		      if (data.email !== undefined) updateData.email = data.email;
-		      if (data.role !== undefined) updateData.role = data.role;
-		      if (data.active !== undefined) updateData.active = data.active;
-		      if (data.password !== undefined) {
-				        updateData.password = await bcrypt.hash(data.password, 12);
-			  }
-		  
-		      const user = await db.user.update({
-				        where: { id: params.id },
-				        data: updateData,
-				        select: {
-							        id: true,
-							        name: true,
-							        email: true,
-							        role: true,
-							        active: true,
-							        createdAt: true,
-							        updatedAt: true,
-						},
-			  });
-		  
-		      return NextResponse.json({ user });
-	  } catch (error: any) {
-		      if (error?.name === 'ZodError') {
-				        return NextResponse.json({ error: error.errors[0]?.message || 'Validation error' }, { status: 400 });
-			  }
-		      console.error('PATCH /api/users/[id] error:', error);
-		      return NextResponse.json({ error: 'Failed to update user' }, { status: 500 });
-	  }
+const schema = z.object({ name: z.string().trim().min(2).optional(), email: z.string().trim().email().optional(), password: z.string().min(8).optional(), role: z.enum(['ADMIN', 'STAFF']).optional(), active: z.boolean().optional() });
+async function update(request: NextRequest, id: string, deactivate = false) {
+  try {
+    const actor = await currentUser(request);
+    if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!isAdministrator(actor.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const data = deactivate ? { active: false } : schema.parse(await request.json());
+    const password = data.password !== undefined ? await hashPassword(data.password) : undefined;
+    const result = await db.$transaction(async tx => {
+      // Serialize role changes with initial Super Admin provisioning.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(7231042)`;
+      const target = await tx.user.findUnique({ where: { id } });
+      if (!target) return { error: 'User not found', status: 404 };
+      if (!canManageUser(actor, target)) return { error: 'Only a Super Admin can manage administrators', status: 403 };
+      if (target.role === 'SUPER_ADMIN' && (data.role !== undefined || data.active === false)) return { error: 'The Super Admin account cannot be demoted or deactivated here', status: 403 };
+      if (data.role === 'ADMIN' && actor.role !== 'SUPER_ADMIN') return { error: 'Only a Super Admin can grant Admin access', status: 403 };
+      if (id === actor.id && (data.active === false || (data.role !== undefined && data.role !== actor.role))) return { error: 'You cannot remove your own access', status: 400 };
+      const user = await tx.user.update({ where: { id }, data: { ...data, ...(password !== undefined ? { password } : {}) }, select: { id: true, name: true, email: true, role: true, active: true, createdAt: true, updatedAt: true } });
+      await tx.auditLog.create({ data: { action: 'UPDATE', entityType: 'User', entityId: id, userId: actor.id, changes: JSON.stringify({ role: { from: target.role, to: user.role }, active: user.active, passwordChanged: password !== undefined }) } });
+      return { user };
+    });
+    return 'error' in result ? NextResponse.json({ error: result.error }, { status: result.status }) : NextResponse.json(result);
+  } catch (error: any) {
+    if (error instanceof z.ZodError) return NextResponse.json({ error: error.errors[0]?.message }, { status: 400 });
+    if (error?.code === 'P2002') return NextResponse.json({ error: 'Email address already in use' }, { status: 409 });
+    return NextResponse.json({ error: 'Failed to update user' }, { status: 500 });
+  }
 }
-
-export async function DELETE(
-	  request: NextRequest,
-	{ params }: { params: { id: string } }
-) {
-	  try {
-		      const requestingUserId = request.headers.get('x-user-id');
-		      const requestingUserRole = request.headers.get('x-user-role');
-		      if (!requestingUserId) {
-				        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-			  }
-		      if (requestingUserRole !== 'ADMIN') {
-				        return NextResponse.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
-			  }
-		  
-		      // Prevent self-deletion
-		      if (params.id === requestingUserId) {
-				        return NextResponse.json({ error: 'You cannot delete your own account' }, { status: 400 });
-			  }
-		  
-		      const target = await db.user.findUnique({ where: { id: params.id } });
-		      if (!target) {
-				        return NextResponse.json({ error: 'User not found' }, { status: 404 });
-			  }
-		  
-		      // Soft delete: deactivate instead of hard delete to preserve audit logs
-		      const user = await db.user.update({
-				        where: { id: params.id },
-				        data: { active: false },
-				        select: { id: true, name: true, active: true },
-			  });
-		  
-		      return NextResponse.json({ user, message: 'User deactivated successfully' });
-	  } catch (error) {
-		      console.error('DELETE /api/users/[id] error:', error);
-		      return NextResponse.json({ error: 'Failed to deactivate user' }, { status: 500 });
-	  }
-}
+export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) { return update(request, params.id); }
+export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) { return update(request, params.id, true); }

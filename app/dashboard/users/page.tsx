@@ -1,5 +1,8 @@
 'use client';
 
+import { useLanguage } from '@/components/i18n/LanguageProvider';
+import { formatUiDate, Language } from '@/lib/i18n/translate';
+
 import { useEffect, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -10,7 +13,7 @@ interface StaffUser {
 	  id: string;
 	  name: string;
 	  email: string;
-	  role: 'ADMIN' | 'STAFF';
+	  role: 'SUPER_ADMIN' | 'ADMIN' | 'STAFF';
 	  active: boolean;
 	  createdAt: string;
 	  _count: { sessions: number };
@@ -18,29 +21,29 @@ interface StaffUser {
 
 interface UsersResponse {
 	  users: StaffUser[];
+  currentUser: { id: string; role: string };
 }
 
-const ROLE_LABELS = { ADMIN: 'Admin', STAFF: 'Staff' };
+const ROLE_LABELS = { SUPER_ADMIN: 'Super Admin', ADMIN: 'Admin', STAFF: 'Staff' };
 const ROLE_COLORS = {
+  SUPER_ADMIN: 'bg-amber-100 text-amber-900',
 	  ADMIN: 'bg-purple-100 text-purple-800',
 	  STAFF: 'bg-blue-100 text-blue-800',
 };
 
-function formatDate(dateStr: string): string {
-	  return new Date(dateStr).toLocaleDateString('en-GB', {
-		      day: '2-digit', month: 'short', year: 'numeric',
-	  });
-}
+function formatDate(dateStr: string, language: Language): string { return formatUiDate(language, dateStr); }
 
 export default function UsersPage() {
-	  const [users, setUsers] = useState<StaffUser[]>([]);
+  const { t, language } = useLanguage();
+	  const [actor, setActor] = useState<{ id: string; role: string } | null>(null);
+  const [users, setUsers] = useState<StaffUser[]>([]);
 	  const [loading, setLoading] = useState(true);
 	  const [error, setError] = useState('');
 	  const [successMsg, setSuccessMsg] = useState('');
 	  const [showAddForm, setShowAddForm] = useState(false);
 	  const [editingUser, setEditingUser] = useState<StaffUser | null>(null);
 	  const [formData, setFormData] = useState({
-		      name: '', email: '', password: '', role: 'STAFF' as 'ADMIN' | 'STAFF',
+		      name: '', email: '', password: '', role: 'STAFF' as 'SUPER_ADMIN' | 'ADMIN' | 'STAFF',
 	  });
 	  const [formError, setFormError] = useState('');
 	  const [submitting, setSubmitting] = useState(false);
@@ -51,6 +54,7 @@ export default function UsersPage() {
 		      try {
 				        const data = await getJson<UsersResponse>('/api/users');
 				        setUsers(data.users || []);
+          setActor(data.currentUser);
 			  } catch (err: any) {
 				        setError(err.message || 'Failed to load staff users');
 			  } finally {
@@ -81,7 +85,7 @@ export default function UsersPage() {
 							        const updateData: any = {
 										          name: formData.name,
 										          email: formData.email,
-										          role: formData.role,
+										          ...(editingUser.role === 'SUPER_ADMIN' ? {} : { role: formData.role }),
 									};
 							        if (formData.password) updateData.password = formData.password;
 							        await patchJson(`/api/users/${editingUser.id}`, updateData);
@@ -120,24 +124,23 @@ export default function UsersPage() {
 		      <div className="space-y-6">
 			        <div className="flex items-center justify-between">
 						        <div>
-									<h1 className="text-2xl font-bold text-gray-900">Staff Management</h1>
-									          <p className="text-sm text-gray-500 mt-1">Manage clinic staff accounts and access levels</p>
+									<h1 className="text-2xl font-bold text-gray-900">{t("Staff Management")}</h1>
+									          <p className="text-sm text-gray-500 mt-1">{t("Manage clinic staff accounts and access levels")}</p>
 						</div>
 						{!showAddForm && (
 							          <Button onClick={() => { setShowAddForm(true); setEditingUser(null); resetForm(); setShowAddForm(true); }}>
-								            + Add Staff Member
-								          </Button>
+								            {t("+ Add Staff Member")} </Button>
 							        )}
 			  </div>
 			  
 			  {successMsg && (
 				          <div className="bg-green-50 border border-green-200 rounded-md p-4">
-					  <p className="text-green-800 text-sm font-medium">{successMsg}</p>
+					  <p className="text-green-800 text-sm font-medium">{t(successMsg)}</p>
 					          </div>
 				        )}
 			  {error && (
 				          <div className="bg-red-50 border border-red-200 rounded-md p-4">
-					  <p className="text-red-800 text-sm">{error}</p>
+					  <p className="text-red-800 text-sm">{t(error)}</p>
 					          </div>
 				        )}
 			  
@@ -145,28 +148,28 @@ export default function UsersPage() {
 			  {showAddForm && (
 				          <Card>
 					            <CardHeader>
-									            <CardTitle>{editingUser ? `Edit ${editingUser.name}` : 'Add New Staff Member'}</CardTitle>
+									            <CardTitle>{editingUser ? t("Edit {name}", {name: editingUser.name}) : t("Add New Staff Member")}</CardTitle>
 					  </CardHeader>
 					            <CardContent>
 									            <form onSubmit={handleSubmit} className="space-y-4">
 													{formError && (
 														                <div className="bg-red-50 border border-red-200 rounded-md p-3">
-															<p className="text-red-800 text-sm">{formError}</p>
+															<p className="text-red-800 text-sm">{t(formError)}</p>
 															                </div>
 														              )}
 													              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 																	                  <div>
-																						                    <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
-																						                    <Input
+																						                    <label htmlFor="field-app-dashboard-users-page-tsx-1" className="block text-sm font-medium text-gray-700 mb-1">{t("Full Name *")}</label>
+																						                    <Input id="field-app-dashboard-users-page-tsx-1"
 																												                    value={formData.name}
 																												                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-																												                    placeholder="e.g. Sarah Johnson"
+																												                    placeholder={t("e.g. Sarah Johnson")}
 																												                    required
 																												                  />
 																	  </div>
 																	                  <div>
-																						                    <label className="block text-sm font-medium text-gray-700 mb-1">Email Address *</label>
-																						                    <Input
+																						                    <label htmlFor="field-app-dashboard-users-page-tsx-2" className="block text-sm font-medium text-gray-700 mb-1">{t("Email Address *")}</label>
+																						                    <Input id="field-app-dashboard-users-page-tsx-2"
 																												                    type="email"
 																												                    value={formData.email}
 																												                    onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
@@ -175,35 +178,38 @@ export default function UsersPage() {
 																												                  />
 																	  </div>
 																	                  <div>
-																						                    <label className="block text-sm font-medium text-gray-700 mb-1">
-																												                    Password {editingUser ? '(leave blank to keep current)' : '*'}
+																						                    <label htmlFor="field-app-dashboard-users-page-tsx-3" className="block text-sm font-medium text-gray-700 mb-1">
+																												                    {t("Password")} {editingUser ? t("(leave blank to keep current)") : '*'}
 																						  </label>
-																						                    <Input
+																						                    <Input id="field-app-dashboard-users-page-tsx-3"
 																												                    type="password"
 																												                    value={formData.password}
 																												                    onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-																												                    placeholder="Min. 8 characters"
+																												                    placeholder={t("Min. 8 characters")}
 																												                    required={!editingUser}
 																												                  />
 																	  </div>
 																	                  <div>
-																						                    <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
-																						                    <select
+																						                    <label htmlFor="field-app-dashboard-users-page-tsx-4" className="block text-sm font-medium text-gray-700 mb-1">{t("Role *")}</label>
+																						                    <select id="field-app-dashboard-users-page-tsx-4"
+ aria-label={t("Role")}
 																												                    value={formData.role}
-																												                    onChange={(e) => setFormData(prev => ({ ...prev, role: e.target.value as 'ADMIN' | 'STAFF' }))}
+ disabled={editingUser?.role === 'SUPER_ADMIN'}
+																												                    onChange={(e) => setFormData(prev => ({ ...prev, role: e.target.value as 'SUPER_ADMIN' | 'ADMIN' | 'STAFF' }))}
 																												                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
 																												                    required
 																												                  >
-																												<option value="STAFF">Staff</option>
-																												<option value="ADMIN">Admin</option>
+																												<option value="STAFF">{t("Staff")}</option>
+																												{actor?.role === 'SUPER_ADMIN' && <option value="ADMIN">{t("Admin")}</option>}
+{editingUser?.role === 'SUPER_ADMIN' && <option value="SUPER_ADMIN">{t("Super Admin")}</option>}
 																						  </select>
 																	  </div>
 													</div>
 													              <div className="flex gap-3 pt-2">
 																	                  <Button type="submit" disabled={submitting}>
-																						  {submitting ? 'Saving...' : (editingUser ? 'Save Changes' : 'Add Staff Member')}
+																						  {submitting ? t("Saving...") : (editingUser ? t("Save Changes") : t("Add Staff Member"))}
 																	  </Button>
-																	                  <Button type="button" variant="outline" onClick={resetForm}>Cancel</Button>
+																	                  <Button type="button" variant="outline" onClick={resetForm}>{t("Cancel")}</Button>
 													</div>
 									</form>
 					  </CardContent>
@@ -214,8 +220,8 @@ export default function UsersPage() {
 			        <Card>
 						        <CardHeader>
 									          <CardTitle className="flex items-center justify-between">
-												  <span>Staff Members</span>
-												              <span className="text-sm font-normal text-gray-500">{users.length} member{users.length !== 1 ? 's' : ''}</span>
+												  <span>{t("Staff Members")}</span>
+												              <span className="text-sm font-normal text-gray-500">{t("{count} staff members", {count: users.length})}</span>
 									</CardTitle>
 						</CardHeader>
 						        <CardContent>
@@ -225,21 +231,21 @@ export default function UsersPage() {
 											            </div>
 										          ) : users.length === 0 ? (
 										            <div className="text-center py-12 text-gray-500">
-											<p className="text-lg font-medium">No staff members yet</p>
-											<p className="text-sm mt-1">Add your first staff member to get started</p>
+											<p className="text-lg font-medium">{t("No staff members yet")}</p>
+											<p className="text-sm mt-1">{t("Add your first staff member to get started")}</p>
 											            </div>
 										          ) : (
 										            <div className="overflow-x-auto">
 											              <table className="w-full text-sm">
 															                  <thead>
 																				                    <tr className="border-b border-gray-200">
-																										                    <th className="text-left py-3 px-2 font-semibold text-gray-700">Name</th>
-																										                    <th className="text-left py-3 px-2 font-semibold text-gray-700">Email</th>
-																										                    <th className="text-left py-3 px-2 font-semibold text-gray-700">Role</th>
-																										                    <th className="text-left py-3 px-2 font-semibold text-gray-700">Status</th>
-																										                    <th className="text-left py-3 px-2 font-semibold text-gray-700">Sessions</th>
-																										                    <th className="text-left py-3 px-2 font-semibold text-gray-700">Joined</th>
-																										                    <th className="text-right py-3 px-2 font-semibold text-gray-700">Actions</th>
+																										                    <th className="text-left py-3 px-2 font-semibold text-gray-700">{t("Name")}</th>
+																										                    <th className="text-left py-3 px-2 font-semibold text-gray-700">{t("Email")}</th>
+																										                    <th className="text-left py-3 px-2 font-semibold text-gray-700">{t("Role")}</th>
+																										                    <th className="text-left py-3 px-2 font-semibold text-gray-700">{t("Status")}</th>
+																										                    <th className="text-left py-3 px-2 font-semibold text-gray-700">{t("Sessions")}</th>
+																										                    <th className="text-left py-3 px-2 font-semibold text-gray-700">{t("Joined")}</th>
+																										                    <th className="text-right py-3 px-2 font-semibold text-gray-700">{t("Actions")}</th>
 																				  </tr>
 															  </thead>
 															                  <tbody>
@@ -249,32 +255,33 @@ export default function UsersPage() {
 																						                        <td className="py-3 px-2 text-gray-600">{user.email}</td>
 																						                        <td className="py-3 px-2">
 																													                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ROLE_COLORS[user.role]}`}>
-																																				{ROLE_LABELS[user.role]}
+																																				{t(ROLE_LABELS[user.role])}
 																													</span>
 																						  </td>
 																						                        <td className="py-3 px-2">
 																													                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${user.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-																																				{user.active ? 'Active' : 'Inactive'}
+																																				{user.active ? t("Active") : t("Inactive")}
 																													</span>
 																						  </td>
 																						                        <td className="py-3 px-2 text-gray-600">{user._count.sessions}</td>
-																						                        <td className="py-3 px-2 text-gray-600">{formatDate(user.createdAt)}</td>
+																						                        <td className="py-3 px-2 text-gray-600">{formatDate(user.createdAt, language)}</td>
 																						                        <td className="py-3 px-2">
 																													                        <div className="flex gap-2 justify-end">
 																																				                          <Button
 																																										                              variant="outline"
 																																																	                              size="sm"
-																																																								                              onClick={() => openEditForm(user)}
+																																																								                              disabled={actor?.role !== 'SUPER_ADMIN' && user.role !== 'STAFF'}
+ onClick={() => openEditForm(user)}
 																																																															                            >
-																																																																						                            Edit
-																																																																													                          </Button>
+																																																																						                            {t("Edit")} </Button>
 																																				                          <Button
 																																										                              variant="outline"
 																																																	                              size="sm"
-																																																								                              onClick={() => handleToggleActive(user)}
+																																																								                              disabled={user.role === 'SUPER_ADMIN' || user.id === actor?.id || (actor?.role !== 'SUPER_ADMIN' && user.role !== 'STAFF')}
+ onClick={() => handleToggleActive(user)}
 																																																															                              className={user.active ? 'text-red-600 border-red-200 hover:bg-red-50' : 'text-green-600 border-green-200 hover:bg-green-50'}
 																																																																						                            >
-																																																																													                            {user.active ? 'Deactivate' : 'Activate'}
+																																																																													                            {user.active ? t("Deactivate") : t("Activate")}
 																																																																																				                          </Button>
 																													</div>
 																						  </td>

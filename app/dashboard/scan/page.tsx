@@ -1,10 +1,11 @@
 'use client';
 
+import { useLanguage } from '@/components/i18n/LanguageProvider';
+
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { getJson, postJson } from '@/lib/api-client';
-import { formatDisplayDate } from '@/lib/clinic';
 
 interface ScanMember {
 	  id: string;
@@ -63,14 +64,18 @@ interface SessionProcessResponse {
 }
 
 export default function ScanPage() {
+  const { t, formatDate: formatDisplayDate } = useLanguage();
 	  const [barcode, setBarcode] = useState('');
 	  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
 	  const [selectedPackageId, setSelectedPackageId] = useState('');
 	  const [isLoading, setIsLoading] = useState(false);
 	  const [isProcessing, setIsProcessing] = useState(false);
 	  const [message, setMessage] = useState('');
+  const [messageSuccess,setMessageSuccess]=useState(false);
+  const [reviewing,setReviewing]=useState(false);
+  const [needsRefresh,setNeedsRefresh]=useState(false);
 	  const [whatsappLink, setWhatsappLink] = useState('');
-	
+
 	  // Manual entry mode
 	  const [inputMode, setInputMode] = useState<'scan' | 'manual'>('scan');
 	  const [manualCardNumber, setManualCardNumber] = useState('');
@@ -82,24 +87,25 @@ export default function ScanPage() {
 				        setBarcode(queryBarcode);
 		      }
 	  }, []);
-	
+
 	  const handleSearch = async () => {
+    if(isLoading || isProcessing)return; setReviewing(false);setMessageSuccess(false);
 		      const searchValue = inputMode === 'manual' ? manualCardNumber.trim() : barcode.trim();
 		      if (!searchValue) {
 				        setMessage('Please enter a barcode or card number.');
 				        return;
 			  }
-		  
+
 		      setIsLoading(true);
 		      setMessage('');
 		      setScanResult(null);
 		      setSelectedPackageId('');
 		      setWhatsappLink('');
-		  
+
     const isMemberId = searchValue.toUpperCase().startsWith('GMC-');
 		  try {
 				                  const data = await getJson<ScanResult>(`/api/scan?${isMemberId ? `memberId=${encodeURIComponent(searchValue)}` : `barcode=${encodeURIComponent(searchValue)}`}`);
-				        setScanResult(data);
+				        setScanResult(data);setNeedsRefresh(false);
 				        // Auto-select first active package
 				        if (data.activePackages.length > 0) {
 							        setSelectedPackageId(data.activePackages[0].id);
@@ -111,113 +117,114 @@ export default function ScanPage() {
 												       setIsLoading(false);
 											 }
 			  };
-		  
+
 		    const handleProcessSession = async () => {
-				    if (!scanResult) return;
+				    if (!scanResult || isProcessing || needsRefresh) return;
 				    if (!selectedPackageId) {
-						      setMessage('Select an active package before processing.');
+						      setMessageSuccess(false);setMessage('Select an active package before processing.');
 						      return;
 					}
-				
+
 				    setIsProcessing(true);
 				    setMessage('');
 				    setWhatsappLink('');
-				
+
 				    try {
 						      const response = await postJson<SessionProcessResponse>('/api/sessions', {
 								          barcode: scanResult.card?.barcode,
 								          packageId: selectedPackageId,
 							  });
-						
+
 						      const msg = response.whatsappSent
 							          ? 'Session confirmed. WhatsApp notification sent automatically.'
 							          : 'Session confirmed. Use the button below to send a WhatsApp notification.';
-						
-						      setMessage(msg);
+
+						      setMessage(msg);setMessageSuccess(true);setReviewing(false);setNeedsRefresh(true);
 						      if (response.whatsappLink) {
 								          setWhatsappLink(response.whatsappLink);
 							  }
-						
+
 						      // Refresh scan result to show updated session count
 						      const searchValue = inputMode === 'manual' ? manualCardNumber.trim() : barcode.trim();
 						                const isMemberIdRefresh = searchValue.toUpperCase().startsWith('GMC-');
-						                const updated = await getJson<ScanResult>(`/api/scan?${isMemberIdRefresh ? `memberId=${encodeURIComponent(searchValue)}` : `barcode=${encodeURIComponent(searchValue)}`}`);
-						      if (updated.activePackages.length > 0) {
+						                let updated: ScanResult;
+ try {updated = await getJson<ScanResult>(`/api/scan?${isMemberIdRefresh ? `memberId=${encodeURIComponent(searchValue)}` : `barcode=${encodeURIComponent(searchValue)}`}`);}
+
+						      catch {setMessage('Session recorded. Search for the patient again before recording another session.');return;}
+ setScanResult(updated);setNeedsRefresh(false);setSelectedPackageId('');
+ if (updated.activePackages.length > 0) {
 								          const stillActive = updated.activePackages.find((p) => p.id === selectedPackageId);
 								          setSelectedPackageId(stillActive ? stillActive.id : updated.activePackages[0].id);
 							  }
 					} catch (err: unknown) {
 						      const error = err as { message?: string };
-													      setMessage(error.message || 'Failed to process session. Please try again.');
+													      setMessageSuccess(false);setMessage(error.message || 'Failed to process session. Please try again.');
 												   } finally {
 													         setIsProcessing(false);
 												   }
 					};
-				
+
 				  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
 					      if (e.key === 'Enter') {
 							        handleSearch();
 						  }
 				  };
-				
+
 				  const handleModeSwitch = (mode: 'scan' | 'manual') => {
-					      setInputMode(mode);
+					      if(isProcessing)return;setReviewing(false);setMessageSuccess(false);setInputMode(mode);
 					      setMessage('');
 					      setScanResult(null);
 					      setSelectedPackageId('');
 					      setWhatsappLink('');
 				  };
-				
+
 				  return (
 					      <div className="space-y-6">
 						        <div>
-									<h1 className="text-2xl font-bold text-slate-900">Reception Desk</h1>
+									<h1 className="text-2xl font-bold text-slate-900">{t("Reception Desk")}</h1>
 									        <p className="text-slate-600 mt-1">
-												          Scan membership card
-									</p>
+												          {t("Scan membership card")} </p>
 									        <p className="text-sm text-slate-500 mt-1">
-												          Use the member barcode to load session balance, confirm attendance, and generate a WhatsApp
-												          notification when the session is recorded.
-									</p>
+												          {t("Use the member barcode to load session balance, confirm attendance, and generate a WhatsApp notification when the session is recorded.")} </p>
 						  </div>
-						  
+
 						        <Card>
 									        <CardHeader>
-												<CardTitle>Scan or search barcode</CardTitle>
+												<CardTitle>{t("Scan or search barcode")}</CardTitle>
 									</CardHeader>
 									        <CardContent className="space-y-4">
 												{/* Mode toggle */}
 												          <div className="flex rounded-lg border border-gray-200 overflow-hidden w-full sm:w-auto">
 															              <button
-																			                onClick={() => handleModeSwitch('scan')}
+																			                disabled={isProcessing} onClick={() => handleModeSwitch('scan')}
 																			                className={`flex-1 sm:flex-none px-4 py-2 text-sm font-medium transition-colors ${
 																                  inputMode === 'scan'
 																									                     ? 'bg-blue-600 text-white'
 																									                     : 'bg-white text-slate-600 hover:bg-slate-50'
 																									  }`}
 																			              >
-																			                Barcode / QR Scan
-															  </button>
+																			                {t("Barcode / QR Scan")} </button>
 															              <button
-																			                onClick={() => handleModeSwitch('manual')}
+																			                disabled={isProcessing} onClick={() => handleModeSwitch('manual')}
 																			                className={`flex-1 sm:flex-none px-4 py-2 text-sm font-medium transition-colors border-l border-gray-200 ${
 																                  inputMode === 'manual'
 																									                     ? 'bg-blue-600 text-white'
 																									                     : 'bg-white text-slate-600 hover:bg-slate-50'
 																									  }`}
 																			              >
-																			                Manual Card Entry
-															  </button>
+																			                {t("Manual Card Entry")} </button>
 												</div>
-												
+
 												{inputMode === 'scan' ? (
 													            <div className="flex flex-col sm:flex-row gap-2">
 														              <input
 																		                  type="text"
+ aria-label={t("Barcode")}
 																		                  value={barcode}
 																		                  onChange={(e) => setBarcode(e.target.value)}
 																		                  onKeyDown={handleKeyDown}
-																		                  placeholder="Scan or type barcode here..."
+																		                  dir="ltr"
+ placeholder={t("Scan or type barcode here...")}
 																		                  autoFocus
 																		                  className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
 																		                />
@@ -227,22 +234,21 @@ export default function ScanPage() {
 																		                  isLoading={isLoading}
 																		                  className="w-full sm:w-auto"
 																		                >
-																		                  Search
-														</Button>
+																		                  {t("Search")} </Button>
 														            </div>
 													          ) : (
 													            <div className="space-y-3">
 														              <p className="text-sm text-slate-500">
-																		                  Enter the member&apos;s card number (e.g. GMC-XXXX-XXXXXX) or any unique identifier
-																		                  printed on the membership card.
-														</p>
+																		                  {t("Enter the member's card number (e.g. GMC-XXXX-XXXXXX) or any unique identifier printed on the membership card.")} </p>
 														              <div className="flex flex-col sm:flex-row gap-2">
 																		                  <input
 																							                    type="text"
+ aria-label={t("Card Number")}
 																							                    value={manualCardNumber}
 																							                    onChange={(e) => setManualCardNumber(e.target.value)}
 																							                    onKeyDown={handleKeyDown}
-																							                    placeholder="e.g. GMC-MOXG5HWF-082IAU"
+																							                    dir="ltr"
+ placeholder="e.g. GMC-MOXG5HWF-082IAU"
 																							                    autoFocus
 																							                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono uppercase"
 																							                  />
@@ -252,43 +258,42 @@ export default function ScanPage() {
 																							                    isLoading={isLoading}
 																							                    className="w-full sm:w-auto"
 																							                  >
-																							                    Look Up
-																		  </Button>
+																							                    {t("Look Up")} </Button>
 														</div>
 														            </div>
 													          )}
 									</CardContent>
 						  </Card>
-						  
+
 						  {message && (
-							          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-								  {message}
+							          <div role={messageSuccess ? "status" : "alert"} className={`feedback-banner ${messageSuccess ? "success" : "error"}`}>
+								  {t(message)}
 								          </div>
 							        )}
-						  
+
 						  {scanResult && (
 							          <div className="space-y-4">
 								  {/* Member info */}
 								            <Card>
 												            <CardHeader>
-																<CardTitle>Member found</CardTitle>
+																<CardTitle>{t("Member found")}</CardTitle>
 												</CardHeader>
 												            <CardContent>
 																              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 																				                  <div>
-																									                    <p className="text-xs text-slate-500 uppercase tracking-wide">Name</p>
+																									                    <p className="text-xs text-slate-500 uppercase tracking-wide">{t("Name")}</p>
 																									                    <p className="font-semibold text-slate-900">{scanResult.member.name}</p>
 																				  </div>
 																				                  <div>
-																									                    <p className="text-xs text-slate-500 uppercase tracking-wide">Member ID</p>
+																									                    <p className="text-xs text-slate-500 uppercase tracking-wide">{t("Member ID")}</p>
 																									                    <p className="font-mono text-slate-900">{scanResult.member.memberId}</p>
 																				  </div>
 																				                  <div>
-																									                    <p className="text-xs text-slate-500 uppercase tracking-wide">Phone</p>
+																									                    <p className="text-xs text-slate-500 uppercase tracking-wide">{t("Phone")}</p>
 																									                    <p className="text-slate-900">{scanResult.member.phone}</p>
 																				  </div>
 																				                  <div>
-																									                    <p className="text-xs text-slate-500 uppercase tracking-wide">Status</p>
+																									                    <p className="text-xs text-slate-500 uppercase tracking-wide">{t("Status")}</p>
 																									                    <span
 																															                    className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
 																										                        scanResult.member.status === 'ACTIVE'
@@ -296,28 +301,31 @@ export default function ScanPage() {
 																																						                        : 'bg-red-100 text-red-700'
 																																												                    }`}
 																															                  >
-																															{scanResult.member.status}
+																															{t(scanResult.member.status)}
 																									  </span>
 																				  </div>
 																				                  <div>
-																									                    <p className="text-xs text-slate-500 uppercase tracking-wide">Remaining Sessions</p>
+																									                    <p className="text-xs text-slate-500 uppercase tracking-wide">{t("Remaining Sessions")}</p>
 																									                    <p className="text-2xl font-bold text-blue-600">{scanResult.totalRemainingSessions}</p>
 																				  </div>
 																				                  <div>
-																									                    <p className="text-xs text-slate-500 uppercase tracking-wide">Expiry Date</p>
+																									                    <p className="text-xs text-slate-500 uppercase tracking-wide">{t("Expiry Date")}</p>
 																									                    <p className="text-slate-900">{formatDisplayDate(scanResult.member.expiryDate)}</p>
 																				  </div>
 																</div>
 												</CardContent>
 								  </Card>
-								  
+
 								  {/* Package selection */}
 								  {scanResult.activePackages.length > 0 ? (
 									              <Card>
 										                <CardHeader>
-															<CardTitle>Select package for this session</CardTitle>
+															<CardTitle>{t("Select package for this session")}</CardTitle>
 										  </CardHeader>
 										                <CardContent className="space-y-3">
+ {needsRefresh && <p role="status" className="form-guidance">{t('Search for the patient again to refresh the session balance.')}</p>}
+ {reviewing && <section className="session-confirmation" aria-label={t('Confirm attendance')}><h3>{t('Confirm attendance')}</h3><p><bdi>{scanResult.member.name}</bdi> · <bdi>{scanResult.activePackages.find(pkg=>pkg.id===selectedPackageId)?.name}</bdi></p><p>{t('This records attendance and uses one session from the selected package.')}</p><div className="flex flex-wrap gap-3"><Button onClick={handleProcessSession} isLoading={isProcessing}>{t('Record one session')}</Button><Button variant="outline" disabled={isProcessing} onClick={()=>setReviewing(false)}>{t('Cancel')}</Button></div></section>}
+
 															{scanResult.activePackages.map((pkg) => (
 																                  <label
 																					                      key={pkg.id}
@@ -332,72 +340,66 @@ export default function ScanPage() {
 																							                      name="package"
 																							                      value={pkg.id}
 																							                      checked={selectedPackageId === pkg.id}
-																							                      onChange={() => setSelectedPackageId(pkg.id)}
+																							                      disabled={isProcessing}
+ onChange={() => {setSelectedPackageId(pkg.id);setReviewing(false);}}
 																							                      className="mt-1"
 																							                    />
 																	                    <div className="flex-1">
 																							                      <p className="font-medium text-slate-900">{pkg.name}</p>
 																							                      <p className="text-sm text-slate-500">{pkg.treatmentName}</p>
 																							                      <p className="text-sm text-slate-700 mt-1">
-																													                          <span className="font-semibold text-blue-600">{pkg.remainingSessions}</span> sessions
-																													                          remaining of {pkg.sessionCount}
+																													                          <span className="font-semibold text-blue-600">{pkg.remainingSessions}</span> {t("sessions remaining of")} {pkg.sessionCount}
 																							</p>
 																	</div>
 																	                  </label>
 																                ))}
 															                <Button
 																				                  variant="primary"
-																				                  onClick={handleProcessSession}
+																				                  onClick={()=>setReviewing(true)}
+ disabled={needsRefresh || isProcessing || !selectedPackageId || reviewing}
 																				                  isLoading={isProcessing}
 																				                  className="w-full mt-2"
 																				                >
-																				                  Confirm Session
-															</Button>
+																				                  {t("Review session")} </Button>
 										  </CardContent>
 										              </Card>
 									            ) : (
 									              <Card>
 										                <CardContent>
 															                <p className="text-sm text-slate-500 py-2">
-																				                  No active packages found for this member. Please add a package before processing a
-																				                  session.
-															</p>
+																				                  {t("No active packages found for this member. Please add a package before processing a session.")} </p>
 										  </CardContent>
 										              </Card>
 									            )}
-								  
+
 								  {/* WhatsApp link fallback */}
 								  {whatsappLink && (
 									              <Card>
 										                <CardContent className="pt-4">
 															                <p className="text-sm text-slate-600">
-																				                  A WhatsApp notification was prepared for the patient. Open it to review or send the
-																				                  confirmation message.
-															</p>
+																				                  {t("A WhatsApp notification was prepared for the patient. Open it to review or send the confirmation message.")} </p>
 															                <Button
 																				                  variant="secondary"
 																				                  onClick={() => window.open(whatsappLink, '_blank', 'noopener,noreferrer')}
 																				                >
-																				                  Open WhatsApp message
-															</Button>
+																				                  {t("Open WhatsApp message")} </Button>
 										  </CardContent>
 										              </Card>
 									            )}
-								  
+
 								  {/* Recent sessions */}
 								            <Card>
 												            <CardHeader>
-																<CardTitle>Recent session history</CardTitle>
+																<CardTitle>{t("Recent session history")}</CardTitle>
 												</CardHeader>
 												            <CardContent>
 																{scanResult.recentSessions.length === 0 ? (
-																	                <p className="text-sm text-slate-500 p-4">No sessions have been processed yet for this
-																		                  member.</p>
+																	                <p className="text-sm text-slate-500 p-4">{t("No sessions have been processed yet for this member.")}</p>
 																	              ) : (
 																	                <div className="space-y-3">
 																		{scanResult.recentSessions.map((session) => (
-																			                    <div key={session.id} className="rounded-2xl border border-slate-200 p-4">
-																				                      <p className="font-semibold text-slate-900">Session {session.sessionNumber ?? '-'} &bull; {session.status}</p>
+																			                    <div key={session.id} className="rounded-lg border border-slate-200 p-4">
+																				                      <p className="font-semibold text-slate-900">{t("Session")} {session.sessionNumber ?? '-'} &bull; {t(session.status)}</p>
 																				                      <p className="text-sm text-slate-600">{session.packageName ||
 																											  session.treatmentName}</p>
 																				                      <p className="text-sm text-slate-400">{formatDisplayDate(session.completedAt)}</p>

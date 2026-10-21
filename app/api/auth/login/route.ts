@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
       where: { email },
     });
 
-    if (!user || !user.active) {
+    if (!user || !user.active || (body.superAdmin === true && user.role !== 'SUPER_ADMIN')) {
       return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
