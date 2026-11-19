@@ -36,8 +36,10 @@ export async function GET(request: NextRequest) {
     const barcodeInput = searchParams.get('barcode')?.trim();
     const barcode = barcodeInput ? extractBarcodeToken(barcodeInput) : undefined;
     const memberId = searchParams.get('memberId')?.trim();
+    // Manual entry: one box that accepts a card number, barcode or patient ID.
+    const query = searchParams.get('q')?.trim();
 
-    if (!barcode && !memberId) {
+    if (!barcode && !memberId && !query) {
       return NextResponse.json(
         { error: 'Barcode or member ID is required' },
         { status: 400 }
@@ -48,7 +50,48 @@ export async function GET(request: NextRequest) {
     let member: any = null;
     let card: any = null;
 
-    if (barcode) {
+    if (query) {
+      const token = extractBarcodeToken(query);
+      const memberInclude = {
+        cards: { orderBy: { createdAt: 'desc' as const } },
+        packages: {
+          orderBy: { purchasedAt: 'desc' as const },
+          include: { package: { include: { treatment: true } } },
+        },
+        sessions: {
+          orderBy: { createdAt: 'desc' as const },
+          take: 10,
+          include: {
+            treatment: true,
+            memberPackage: { include: { package: true } },
+            processedByUser: { select: { name: true } },
+          },
+        },
+      };
+
+      // 1) card barcode, 2) printed card number, 3) patient ID
+      card =
+        (token && (await db.membershipCard.findUnique({ where: { barcode: token }, include: { member: { include: memberInclude } } }))) ||
+        (await db.membershipCard.findUnique({ where: { cardNumber: query.toUpperCase() }, include: { member: { include: memberInclude } } })) ||
+        (await db.membershipCard.findUnique({ where: { cardNumber: query }, include: { member: { include: memberInclude } } }));
+
+      if (card?.member) {
+        member = card.member;
+      } else {
+        card = null;
+        member =
+          (await db.member.findUnique({ where: { memberId: query }, include: memberInclude })) ||
+          (await db.member.findUnique({ where: { memberId: query.toUpperCase() }, include: memberInclude }));
+
+        if (!member) {
+          return NextResponse.json(
+            { error: 'No member found with this card number or patient ID.' },
+            { status: 404 }
+          );
+        }
+        card = member.cards?.[0] || null;
+      }
+    } else if (barcode) {
       card = await db.membershipCard.findUnique({
         where: { barcode },
         include: {

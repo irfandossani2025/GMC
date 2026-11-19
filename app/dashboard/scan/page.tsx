@@ -77,16 +77,15 @@ export default function ScanPage() {
 	  const [whatsappLink, setWhatsappLink] = useState('');
 
 	  // Manual entry mode
-	  const [inputMode, setInputMode] = useState<'scan' | 'manual' | 'patient'>('scan');
+	  const [inputMode, setInputMode] = useState<'scan' | 'manual'>('scan');
 	  const [manualCardNumber, setManualCardNumber] = useState('');
-	  const [patientIdInput, setPatientIdInput] = useState('');
 
-	  const currentSearchValue = () =>
-		    (inputMode === 'manual' ? manualCardNumber : inputMode === 'patient' ? patientIdInput : barcode).trim();
+	  const currentSearchValue = () => (inputMode === 'manual' ? manualCardNumber : barcode).trim();
 
+	  // Manual entry sends one value; the server checks card number first, then patient ID.
 	  const buildScanQuery = (searchValue: string) => {
-		    const byPatientId = inputMode === 'patient' || searchValue.toUpperCase().startsWith('GMC-');
-		    return byPatientId
+		    if (inputMode === 'manual') return `q=${encodeURIComponent(searchValue)}`;
+		    return searchValue.toUpperCase().startsWith('GMC-')
 			      ? `memberId=${encodeURIComponent(searchValue)}`
 			      : `barcode=${encodeURIComponent(searchValue)}`;
 	  };
@@ -103,7 +102,7 @@ export default function ScanPage() {
     if(isLoading || isProcessing)return; setReviewing(false);setMessageSuccess(false);
 		      const searchValue = currentSearchValue();
 		      if (!searchValue) {
-				        setMessage(inputMode === 'patient' ? 'Please enter a patient ID.' : 'Please enter a barcode or card number.');
+				        setMessage(inputMode === 'manual' ? 'Please enter a card number or patient ID.' : 'Please enter a barcode or card number.');
 				        return;
 			  }
 
@@ -122,8 +121,8 @@ export default function ScanPage() {
 						}
 			  } catch (err: unknown) {
 				        const error = err as { message?: string };
-											        setMessage(inputMode === 'patient'
-												          ? 'No member found with this patient ID. Please check the ID and try again.'
+											        setMessage(inputMode === 'manual'
+												          ? 'No member found with this card number or patient ID.'
 												          : error.message || 'Member not found. Please check the barcode or card number.');
 											 } finally {
 												       setIsLoading(false);
@@ -183,7 +182,7 @@ export default function ScanPage() {
 						  }
 				  };
 
-				  const handleModeSwitch = (mode: 'scan' | 'manual' | 'patient') => {
+				  const handleModeSwitch = (mode: 'scan' | 'manual') => {
 					      if(isProcessing)return;setReviewing(false);setMessageSuccess(false);setInputMode(mode);
 					      setMessage('');
 					      setScanResult(null);
@@ -226,43 +225,9 @@ export default function ScanPage() {
 																									  }`}
 																			              >
 																			                {t("Manual Card Entry")} </button>
-															              <button
-																			                disabled={isProcessing} onClick={() => handleModeSwitch('patient')}
-																			                className={`flex-1 sm:flex-none px-4 py-2 text-sm font-medium transition-colors border-l border-gray-200 ${
-																                  inputMode === 'patient'
-																									                     ? 'bg-blue-600 text-white'
-																									                     : 'bg-white text-slate-600 hover:bg-slate-50'
-																									  }`}
-																			              >
-																			                {t("Patient ID")} </button>
 												</div>
 
-												{inputMode === 'patient' ? (
-													            <div className="space-y-3">
-														              <p className="text-sm text-slate-500">
-																		                  {t("Enter the patient ID to look up the member.")} </p>
-														              <div className="flex flex-col sm:flex-row gap-2">
-																		                  <input
-																							                    type="text"
- aria-label={t("Patient ID")}
-																							                    value={patientIdInput}
-																							                    onChange={(e) => setPatientIdInput(e.target.value)}
-																							                    onKeyDown={handleKeyDown}
-																							                    dir="ltr"
- placeholder={t("e.g. GMC-001")}
-																							                    autoFocus
-																							                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-																							                  />
-																		                  <Button
-																							                    variant="primary"
-																							                    onClick={handleSearch}
-																							                    isLoading={isLoading}
-																							                    className="w-full sm:w-auto"
-																							                  >
-																							                    {t("Look Up")} </Button>
-														              </div>
-													            </div>
-												          ) : inputMode === 'scan' ? (
+												{inputMode === 'scan' ? (
 													            <div className="flex flex-col sm:flex-row gap-2">
 														              <input
 																		                  type="text"
@@ -286,18 +251,18 @@ export default function ScanPage() {
 													          ) : (
 													            <div className="space-y-3">
 														              <p className="text-sm text-slate-500">
-																		                  {t("Enter the member's card number (e.g. GMC-XXXX-XXXXXX) or any unique identifier printed on the membership card.")} </p>
+																		                  {t("Enter the card number or the patient ID.")} </p>
 														              <div className="flex flex-col sm:flex-row gap-2">
 																		                  <input
 																							                    type="text"
- aria-label={t("Card Number")}
+ aria-label={t("Card number or patient ID")}
 																							                    value={manualCardNumber}
 																							                    onChange={(e) => setManualCardNumber(e.target.value)}
 																							                    onKeyDown={handleKeyDown}
 																							                    dir="ltr"
- placeholder="e.g. GMC-MOXG5HWF-082IAU"
+ placeholder={t("Card number or patient ID")}
 																							                    autoFocus
-																							                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono uppercase"
+																							                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
 																							                  />
 																		                  <Button
 																							                    variant="primary"
