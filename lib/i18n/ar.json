@@ -601,5 +601,14 @@
   "Please check the patient details.": "يُرجى التحقق من بيانات المريض.",
   "Please check the package details.": "يُرجى التحقق من بيانات الباقة.",
   "Please check the treatment details.": "يُرجى التحقق من بيانات العلاج.",
-  "Remaining sessions cannot be negative.": "لا يمكن أن تكون الجلسات المتبقية سالبة."
+  "Remaining sessions cannot be negative.": "لا يمكن أن تكون الجلسات المتبقية سالبة.",
+  "Send card on WhatsApp": "إرسال البطاقة عبر واتساب",
+  "Issue the membership card before sending it.": "أصدر بطاقة العضوية قبل إرسالها.",
+  "Sending to": "الإرسال إلى",
+  "Download the card picture instead": "تنزيل صورة البطاقة بدلاً من ذلك",
+  "Could not prepare the WhatsApp message.": "تعذر تجهيز رسالة واتساب.",
+  "Could not create the card link": "تعذر إنشاء رابط البطاقة",
+  "Chrome blocked the WhatsApp tab. Allow pop-ups for this site, then press the button again.": "منع متصفح كروم فتح علامة تبويب واتساب. اسمح بالنوافذ المنبثقة لهذا الموقع ثم اضغط الزر مرة أخرى.",
+  "WhatsApp Web opened in another tab with the message and card link typed in. The card picture is copied: click in the chat, press Ctrl+V to paste it, then press Send.": "تم فتح واتساب ويب في علامة تبويب أخرى مع كتابة الرسالة ورابط البطاقة. تم نسخ صورة البطاقة: انقر داخل المحادثة واضغط Ctrl+V للصقها، ثم اضغط إرسال.",
+  "WhatsApp Web opened in another tab with the message and card link typed in. The card picture was downloaded: attach it with the paperclip in the chat, then press Send.": "تم فتح واتساب ويب في علامة تبويب أخرى مع كتابة الرسالة ورابط البطاقة. تم تنزيل صورة البطاقة: أرفقها باستخدام مشبك الورق في المحادثة، ثم اضغط إرسال."
 }

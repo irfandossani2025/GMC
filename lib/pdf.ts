@@ -158,3 +158,30 @@ export function generatePrintableHTML(
     </html>
   `;
 }
+
+/**
+ * Renders the card (front, and back if given) into a single PNG image,
+ * stacked vertically, for sharing on WhatsApp.
+ */
+export async function renderCardImage(frontElement: HTMLElement, backElement?: HTMLElement): Promise<Blob> {
+  const surface = (element: HTMLElement, selector: string): HTMLElement =>
+    element.matches(selector) ? element : element.querySelector<HTMLElement>(selector) || element;
+  const options = { scale: 3, allowTaint: true, useCORS: true, logging: false, backgroundColor: '#0B1F3A', onclone: prepareCardLogosForExport };
+  const front = await html2canvas(surface(frontElement, '.card-print-surface'), options);
+  const back = backElement ? await html2canvas(surface(backElement, '.card-print-back'), options) : null;
+
+  const gap = back ? 40 : 0;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(front.width, back?.width || 0);
+  canvas.height = front.height + gap + (back?.height || 0);
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Could not prepare the card image');
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(front, 0, 0);
+  if (back) context.drawImage(back, 0, front.height + gap);
+
+  return new Promise((resolve, reject) =>
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Could not prepare the card image'))), 'image/png')
+  );
+}

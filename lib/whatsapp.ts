@@ -160,3 +160,34 @@ export async function sendWhatsAppMessage(
   const link = buildWhatsAppLink(phone, message);
   return { success: false, method: 'link', link };
 }
+
+/**
+ * Phone number in the international format WhatsApp needs (digits only).
+ * Oman local numbers (8 digits) get the 968 country code added.
+ */
+export function phoneForWhatsAppWeb(phone: string): string {
+  let digits = normalizePhoneForWhatsApp(phone);
+  if (digits.startsWith('00')) digits = digits.slice(2);
+  if (digits.length === 8) digits = `968${digits}`;
+  return digits;
+}
+
+/** Opens a chat on WhatsApp Web (web.whatsapp.com) using the number logged in there. */
+export function buildWhatsAppWebLink(phone: string, message: string): string {
+  return `https://web.whatsapp.com/send?phone=${phoneForWhatsAppWeb(phone)}&text=${encodeURIComponent(message)}`;
+}
+
+export function buildCardShareMessage(name: string, memberId: string, expiryDate: string | Date, cardUrl: string): string {
+  return [
+    `Hello ${name},`,
+    '',
+    `Welcome to ${CLINIC_NAME}. Your membership card is ready.`,
+    `Member ID: ${memberId}`,
+    `Valid until: ${formatDisplayDate(expiryDate)}`,
+    '',
+    'View or save your membership card here:',
+    cardUrl,
+    '',
+    'Please show this card at reception on every visit.',
+  ].join('\n');
+}
