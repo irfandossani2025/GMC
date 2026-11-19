@@ -121,9 +121,9 @@ export default function ScanPage() {
 						}
 			  } catch (err: unknown) {
 				        const error = err as { message?: string };
-											        setMessage(inputMode === 'manual'
+											        setMessage(error.message || (inputMode === 'manual'
 												          ? 'No member found with this card number or patient ID.'
-												          : error.message || 'Member not found. Please check the barcode or card number.');
+												          : 'Member not found. Please check the barcode or card number.'));
 											 } finally {
 												       setIsLoading(false);
 											 }

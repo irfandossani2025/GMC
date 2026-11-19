@@ -33,6 +33,12 @@ export async function POST(request: NextRequest) {
           { status: 404 }
         );
       }
+      if (!['ACTIVE', 'PRINTED'].includes(card.status)) {
+        return NextResponse.json(
+          { error: 'This membership card has been deactivated. Please use the patient ID or the new card.' },
+          { status: 410 }
+        );
+      }
 
       member = card.member;
     } else if (data.memberId) {
@@ -46,6 +52,13 @@ export async function POST(request: NextRequest) {
           { status: 404 }
         );
       }
+    }
+
+    if (member && member.status === 'INACTIVE') {
+      return NextResponse.json(
+        { error: 'This patient has been deactivated. Ask the Super Admin to reactivate them before recording a session.' },
+        { status: 400 }
+      );
     }
 
     const now = new Date();

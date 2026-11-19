@@ -5,7 +5,7 @@ import { useLanguage } from '@/components/i18n/LanguageProvider';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { getJson, postJson } from '@/lib/api-client';
+import { deleteJson, getJson, patchJson, postJson } from '@/lib/api-client';
 
 interface TreatmentPackageItem {
   id: string;
@@ -51,9 +51,56 @@ export default function TreatmentsPage() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const [loading,setLoading]=useState(true);
+  // Super Admin catalog management
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [editTreatment, setEditTreatment] = useState<{ id: string; name: string; category: string; durationMinutes: number; price: number } | null>(null);
+  const [editPackage, setEditPackage] = useState<{ id: string; name: string; description: string; sessionCount: number; price: number; validityMonths: number } | null>(null);
+  const [pendingRemoval, setPendingRemoval] = useState<{ type: 'treatment' | 'package'; id: string; name: string } | null>(null);
+  const [isWorking, setIsWorking] = useState(false);
+
   useEffect(() => {
     fetchTreatments();
+    getJson<{ role?: string }>('/api/auth/me').then((me) => setIsSuperAdmin(me.role === 'SUPER_ADMIN')).catch(() => setIsSuperAdmin(false));
   }, []);
+
+  const runCatalogAction = async (action: () => Promise<unknown>, success: string) => {
+    setIsWorking(true);
+    setMessage(null);
+    try {
+      await action();
+      setMessage({ type: 'success', text: success });
+      setEditTreatment(null);
+      setEditPackage(null);
+      setPendingRemoval(null);
+      await fetchTreatments();
+    } catch (error) {
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'The change could not be saved.' });
+    } finally {
+      setIsWorking(false);
+    }
+  };
+
+  const inputClass = 'mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500';
+  const removalPanel = (type: 'treatment' | 'package', id: string) =>
+    pendingRemoval && pendingRemoval.type === type && pendingRemoval.id === id ? (
+      <section className="session-confirmation mt-3" aria-label={t(type === 'treatment' ? 'Remove treatment' : 'Remove package')}>
+        <h3>{t(type === 'treatment' ? 'Remove this treatment and all its packages?' : 'Remove this package from sale?')}</h3>
+        <p><bdi>{pendingRemoval.name}</bdi></p>
+        <p>{t('It will no longer be offered to patients. Patients who already bought it keep their remaining sessions.')}</p>
+        <div className="flex flex-wrap gap-3">
+          <Button
+            isLoading={isWorking}
+            onClick={() => runCatalogAction(
+              () => deleteJson(type === 'treatment' ? `/api/catalog/treatments/${id}` : `/api/catalog/packages/${id}`),
+              type === 'treatment' ? 'Treatment removed.' : 'Package removed.'
+            )}
+          >
+            {t(type === 'treatment' ? 'Remove treatment' : 'Remove package')}
+          </Button>
+          <Button variant="outline" disabled={isWorking} onClick={() => setPendingRemoval(null)}>{t('Cancel')}</Button>
+        </div>
+      </section>
+    ) : null;
 
   const fetchTreatments = async () => {
     setLoading(true);
@@ -113,6 +160,29 @@ export default function TreatmentsPage() {
                     </div>
                     <p className="text-sm text-slate-600">{t("Duration:")} {treatment.durationMinutes} {t("mins")}</p>
                   </div>
+                  {isSuperAdmin && (
+                    <div className="mt-3 flex flex-wrap gap-3">
+                      <Button size="sm" variant="outline" onClick={() => { setPendingRemoval(null); setEditPackage(null); setEditTreatment({ id: treatment.id, name: treatment.name, category: treatment.category, durationMinutes: treatment.durationMinutes, price: treatment.price }); }}>{t("Edit treatment")}</Button>
+                      <Button size="sm" variant="outline" className="border-red-300 text-red-700" onClick={() => { setEditTreatment(null); setPendingRemoval({ type: 'treatment', id: treatment.id, name: treatment.name }); }}>{t("Remove treatment")}</Button>
+                    </div>
+                  )}
+                  {removalPanel('treatment', treatment.id)}
+                  {editTreatment?.id === treatment.id && (
+                    <form
+                      className="mt-3 grid gap-3 rounded-lg border border-amber-200 p-3 sm:grid-cols-2"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        const { id, ...data } = editTreatment;
+                        runCatalogAction(() => patchJson(`/api/catalog/treatments/${id}`, data), 'Treatment updated.');
+                      }}
+                    >
+                      <label className="block text-sm font-medium text-gray-700">{t("Treatment name")}<input required className={inputClass} value={editTreatment.name} onChange={(e) => setEditTreatment({ ...editTreatment, name: e.target.value })} /></label>
+                      <label className="block text-sm font-medium text-gray-700">{t("Category")}<input required className={inputClass} value={editTreatment.category} onChange={(e) => setEditTreatment({ ...editTreatment, category: e.target.value })} /></label>
+                      <label className="block text-sm font-medium text-gray-700">{t("Duration (minutes)")}<input type="number" min={1} dir="ltr" className={inputClass} value={editTreatment.durationMinutes} onChange={(e) => setEditTreatment({ ...editTreatment, durationMinutes: Number(e.target.value) })} /></label>
+                      <label className="block text-sm font-medium text-gray-700">{t("Treatment price")}<input type="number" min={0} step="0.01" dir="ltr" className={inputClass} value={editTreatment.price} onChange={(e) => setEditTreatment({ ...editTreatment, price: Number(e.target.value) })} /></label>
+                      <div className="flex gap-3 sm:col-span-2"><Button type="submit" size="sm" isLoading={isWorking}>{t("Save changes")}</Button><Button type="button" size="sm" variant="outline" disabled={isWorking} onClick={() => setEditTreatment(null)}>{t("Cancel")}</Button></div>
+                    </form>
+                  )}
 
                   <div className="mt-4 grid gap-4 md:grid-cols-2">
                     {treatment.packages.map((pkg) => (
@@ -124,6 +194,33 @@ export default function TreatmentsPage() {
                           <span className="rounded-full bg-white px-3 py-1 border border-slate-200">{pkg.validityMonths} {t("months")}</span>
                           <span className="rounded-full bg-white px-3 py-1 border border-slate-200">{pkg.price.toFixed(2)} {t("OMR")}</span>
                         </div>
+                        {isSuperAdmin && editPackage?.id !== pkg.id && (
+                          <div className="mt-3 flex flex-wrap gap-3">
+                            <Button size="sm" variant="outline" onClick={() => { setPendingRemoval(null); setEditTreatment(null); setEditPackage({ id: pkg.id, name: pkg.name, description: pkg.description || '', sessionCount: pkg.sessionCount, price: pkg.price, validityMonths: pkg.validityMonths }); }}>{t("Edit package")}</Button>
+                            <Button size="sm" variant="outline" className="border-red-300 text-red-700" onClick={() => { setEditPackage(null); setPendingRemoval({ type: 'package', id: pkg.id, name: pkg.name }); }}>{t("Remove package")}</Button>
+                          </div>
+                        )}
+                        {removalPanel('package', pkg.id)}
+                        {editPackage?.id === pkg.id && (
+                          <form
+                            className="mt-3 grid gap-3"
+                            onSubmit={(event) => {
+                              event.preventDefault();
+                              const { id, ...data } = editPackage;
+                              runCatalogAction(() => patchJson(`/api/catalog/packages/${id}`, data), 'Package updated. Changes apply to new sales only.');
+                            }}
+                          >
+                            <label className="block text-sm font-medium text-gray-700">{t("Package name")}<input required className={inputClass} value={editPackage.name} onChange={(e) => setEditPackage({ ...editPackage, name: e.target.value })} /></label>
+                            <label className="block text-sm font-medium text-gray-700">{t("Package description")}<input className={inputClass} value={editPackage.description} onChange={(e) => setEditPackage({ ...editPackage, description: e.target.value })} /></label>
+                            <div className="grid gap-3 sm:grid-cols-3">
+                              <label className="block text-sm font-medium text-gray-700">{t("Session count")}<input type="number" min={1} dir="ltr" className={inputClass} value={editPackage.sessionCount} onChange={(e) => setEditPackage({ ...editPackage, sessionCount: Number(e.target.value) })} /></label>
+                              <label className="block text-sm font-medium text-gray-700">{t("Package price")}<input type="number" min={0} step="0.01" dir="ltr" className={inputClass} value={editPackage.price} onChange={(e) => setEditPackage({ ...editPackage, price: Number(e.target.value) })} /></label>
+                              <label className="block text-sm font-medium text-gray-700">{t("Validity (months)")}<input type="number" min={1} dir="ltr" className={inputClass} value={editPackage.validityMonths} onChange={(e) => setEditPackage({ ...editPackage, validityMonths: Number(e.target.value) })} /></label>
+                            </div>
+                            <p className="text-xs text-slate-500">{t("Changes apply to new sales only. Patients who already bought this package are not affected.")}</p>
+                            <div className="flex gap-3"><Button type="submit" size="sm" isLoading={isWorking}>{t("Save changes")}</Button><Button type="button" size="sm" variant="outline" disabled={isWorking} onClick={() => setEditPackage(null)}>{t("Cancel")}</Button></div>
+                          </form>
+                        )}
                       </div>
                     ))}
                   </div>

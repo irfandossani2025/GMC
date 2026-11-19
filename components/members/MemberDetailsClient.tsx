@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { MembershipCardPreview } from '@/components/cards/MembershipCardPreview';
-import { getJson, postJson } from '@/lib/api-client';
+import { deleteJson, getJson, patchJson, postJson } from '@/lib/api-client';
 import { downloadCardPDF } from '@/lib/pdf';
 import { buildCardIssuedMessage, buildWelcomeMessage, buildWhatsAppLink } from '@/lib/whatsapp';
 import { formatMembershipType } from '@/lib/clinic';
@@ -21,6 +21,7 @@ interface MembershipCardRecord {
   cardNumber: string;
   barcode: string;
   expiryDate: string;
+  status?: string;
 }
 
 interface TreatmentBrief {
@@ -78,6 +79,7 @@ interface MemberResponse {
   expiryDate: string;
   gender?: string;
   address?: string;
+  dateOfBirth?: string;
   cards: MembershipCardRecord[];
   packages?: MemberPackageRecord[];
   sessions?: SessionHistoryRecord[];
@@ -86,6 +88,12 @@ interface MemberResponse {
     email: string;
   };
 }
+
+type ConfirmAction =
+  | { kind: 'deactivate' | 'reactivate' | 'deactivateCard' | 'reissueCard' }
+  | { kind: 'cancelPackage' | 'undoSession'; id: string; label: string };
+
+const toDateInput = (value?: string) => (value ? new Date(value).toISOString().slice(0, 10) : '');
 
 interface TreatmentPackageResponse {
   id: string;
@@ -109,10 +117,25 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
   const [isPurchasingPackage, setIsPurchasingPackage] = useState(false);
   const [packageMessage, setPackageMessage] = useState<string>('');
 
+  // Super Admin management
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({ name: '', memberId: '', phone: '', email: '', gender: '', address: '', membershipType: 'STANDARD', status: 'ACTIVE', expiryDate: '' });
+  const [isSaving, setIsSaving] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [editingPackageId, setEditingPackageId] = useState('');
+  const [packageForm, setPackageForm] = useState({ remainingSessions: 0, expiryDate: '', status: 'ACTIVE' });
+
+  const adminPanelRef = useRef<HTMLDivElement | null>(null);
   const frontCardRef = useRef<HTMLDivElement | null>(null);
   const backCardRef = useRef<HTMLDivElement | null>(null);
 
-  const activeCard = useMemo(() => member?.cards?.[0] || null, [member]);
+  const activeCard = useMemo(
+    () => member?.cards?.find((card) => !card.status || card.status === 'ACTIVE' || card.status === 'PRINTED') || null,
+    [member]
+  );
   const activePackages = useMemo(
     () => member?.packages?.filter((pkg) => pkg.status === 'ACTIVE' && pkg.remainingSessions > 0) ?? [],
     [member]
@@ -145,6 +168,142 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
     fetchMember();
     fetchAvailablePackages();
   }, [memberId]);
+
+  useEffect(() => {
+    getJson<{ role?: string }>('/api/auth/me')
+      .then((me) => setIsSuperAdmin(me.role === 'SUPER_ADMIN'))
+      .catch(() => setIsSuperAdmin(false));
+  }, []);
+
+  useEffect(() => {
+    if (confirmAction || isEditing) adminPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [confirmAction, isEditing]);
+
+  const startEditing = () => {
+    if (!member) return;
+    setEditForm({
+      name: member.name || '',
+      memberId: member.memberId || '',
+      phone: member.phone || '',
+      email: member.email || '',
+      gender: member.gender || '',
+      address: member.address || '',
+      membershipType: member.membershipType || 'STANDARD',
+      status: member.status || 'ACTIVE',
+      expiryDate: toDateInput(member.expiryDate),
+    });
+    setNotice('');
+    setActionError('');
+    setIsEditing(true);
+  };
+
+  const handleSaveEdit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!member) return;
+    try {
+      setIsSaving(true);
+      setActionError('');
+      await patchJson(`/api/members/${member.id}`, {
+        name: editForm.name.trim(),
+        memberId: editForm.memberId.trim(),
+        phone: editForm.phone.trim(),
+        email: editForm.email.trim(),
+        ...(editForm.gender ? { gender: editForm.gender } : {}),
+        address: editForm.address.trim(),
+        membershipType: editForm.membershipType,
+        status: editForm.status,
+        ...(editForm.expiryDate ? { expiryDate: editForm.expiryDate } : {}),
+      });
+      setIsEditing(false);
+      setNotice('Patient details updated.');
+      await fetchMember();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Could not update the patient.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const startEditingPackage = (pkg: MemberPackageRecord) => {
+    setEditingPackageId(pkg.id);
+    setPackageForm({ remainingSessions: pkg.remainingSessions, expiryDate: toDateInput(pkg.expiryDate), status: pkg.status });
+  };
+
+  const handleSavePackage = async (pkg: MemberPackageRecord) => {
+    try {
+      setIsSaving(true);
+      setActionError('');
+      await patchJson(`/api/member-packages/${pkg.id}`, {
+        remainingSessions: Number(packageForm.remainingSessions),
+        ...(packageForm.expiryDate ? { expiryDate: packageForm.expiryDate } : {}),
+        ...(packageForm.status !== pkg.status ? { status: packageForm.status } : {}),
+      });
+      setEditingPackageId('');
+      setNotice('Package updated.');
+      await fetchMember();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Could not update the package.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const runConfirmedAction = async () => {
+    if (!member || !confirmAction) return;
+    try {
+      setIsConfirming(true);
+      setActionError('');
+      switch (confirmAction.kind) {
+        case 'deactivate':
+          await deleteJson(`/api/members/${member.id}`);
+          setNotice('Patient deactivated. Their history is kept and they can be reactivated at any time.');
+          break;
+        case 'reactivate':
+          await patchJson(`/api/members/${member.id}`, { status: 'ACTIVE' });
+          setNotice('Patient reactivated.');
+          break;
+        case 'cancelPackage':
+          await deleteJson(`/api/member-packages/${confirmAction.id}`);
+          setNotice('Package cancelled.');
+          break;
+        case 'undoSession':
+          await deleteJson(`/api/sessions/${confirmAction.id}`);
+          setNotice('Session undone and returned to the package balance.');
+          break;
+        case 'deactivateCard':
+          await postJson('/api/cards/manage', { memberId: member.id, action: 'deactivate' });
+          setNotice('Membership card deactivated. It will no longer work at reception.');
+          break;
+        case 'reissueCard':
+          await postJson('/api/cards/manage', { memberId: member.id, action: 'reissue' });
+          setNotice('New membership card issued. The old card no longer works.');
+          break;
+      }
+      setConfirmAction(null);
+      await fetchMember();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'The action could not be completed.');
+    } finally {
+      setIsConfirming(false);
+    }
+  };
+
+  const confirmText = (action: ConfirmAction): { title: string; body: string; button: string } => {
+    switch (action.kind) {
+      case 'deactivate':
+        return { title: 'Deactivate this patient?', body: 'The patient is marked inactive and no sessions can be recorded for them. Their card, packages and history are kept, and you can reactivate them later.', button: 'Deactivate patient' };
+      case 'reactivate':
+        return { title: 'Reactivate this patient?', body: 'The patient becomes active again and sessions can be recorded.', button: 'Reactivate patient' };
+      case 'cancelPackage':
+        return { title: 'Cancel this package?', body: 'The remaining sessions in this package can no longer be used. The package stays in the history.', button: 'Cancel package' };
+      case 'undoSession':
+        return { title: 'Undo this session?', body: 'The session is marked as cancelled and one session is given back to the package.', button: 'Undo session' };
+      case 'deactivateCard':
+        return { title: 'Deactivate the membership card?', body: 'The current card will stop working when scanned or typed at reception. The patient can still be found by patient ID.', button: 'Deactivate card' };
+      case 'reissueCard':
+        return { title: 'Issue a new membership card?', body: 'The current card stops working and a new card with a new number and barcode is created. Print the new card for the patient.', button: 'Issue new card' };
+    }
+  };
 
   useEffect(() => {
     if (availablePackages.length && !selectedPackageId) {
@@ -239,6 +398,7 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
 
   return (
     <div className="space-y-8">{actionError && <div role="alert" className="feedback-banner error">{t(actionError)}</div>}
+      {notice && <div role="status" className="feedback-banner success">{t(notice)}</div>}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <Link href="/dashboard/members" className="text-sm font-medium text-primary">
@@ -263,6 +423,97 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
         </div>
       </div>
 
+      {isSuperAdmin && (
+        <div ref={adminPanelRef}>
+        <Card className="surface-panel rounded-xl border border-amber-200 shadow-none">
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle>{t("Super Admin controls")}</CardTitle>
+              <p className="mt-1 text-sm text-slate-500">{t("Only the Super Admin can see and use these options.")}</p>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Button variant="outline" onClick={startEditing} disabled={isEditing}>{t("Edit patient")}</Button>
+              {member.status === 'INACTIVE' ? (
+                <Button variant="outline" onClick={() => setConfirmAction({ kind: 'reactivate' })}>{t("Reactivate patient")}</Button>
+              ) : (
+                <Button variant="outline" className="border-red-300 text-red-700" onClick={() => setConfirmAction({ kind: 'deactivate' })}>{t("Deactivate patient")}</Button>
+              )}
+            </div>
+          </CardHeader>
+          {(confirmAction || isEditing) && (
+            <CardContent className="space-y-4">
+              {confirmAction && (() => {
+                const text = confirmText(confirmAction);
+                return (
+                  <section className="session-confirmation" aria-label={t(text.title)}>
+                    <h3>{t(text.title)}</h3>
+                    {'label' in confirmAction && <p><bdi>{confirmAction.label}</bdi></p>}
+                    <p>{t(text.body)}</p>
+                    <div className="flex flex-wrap gap-3">
+                      <Button onClick={runConfirmedAction} isLoading={isConfirming}>{t(text.button)}</Button>
+                      <Button variant="outline" disabled={isConfirming} onClick={() => setConfirmAction(null)}>{t("Cancel")}</Button>
+                    </div>
+                  </section>
+                );
+              })()}
+              {isEditing && (
+                <form onSubmit={handleSaveEdit} className="grid gap-4 sm:grid-cols-2">
+                  {([
+                    ['name', 'Patient Name', 'text'],
+                    ['memberId', 'Patient ID', 'text'],
+                    ['phone', 'Phone', 'tel'],
+                    ['email', 'Email', 'email'],
+                    ['expiryDate', 'Expiry Date', 'date'],
+                  ] as const).map(([field, label, type]) => (
+                    <label key={field} className="block text-sm font-medium text-gray-700">
+                      {t(label)}
+                      <input
+                        type={type}
+                        dir={field === 'name' ? undefined : 'ltr'}
+                        required={field === 'name' || field === 'memberId' || field === 'phone'}
+                        value={editForm[field]}
+                        onChange={(event) => setEditForm((current) => ({ ...current, [field]: event.target.value }))}
+                        className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </label>
+                  ))}
+                  <label className="block text-sm font-medium text-gray-700">
+                    {t("Gender")}
+                    <select value={editForm.gender} onChange={(event) => setEditForm((current) => ({ ...current, gender: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2">
+                      <option value="">{t("Not specified")}</option>
+                      <option value="MALE">{t("Male")}</option>
+                      <option value="FEMALE">{t("Female")}</option>
+                      <option value="OTHER">{t("Other")}</option>
+                    </select>
+                  </label>
+                  <label className="block text-sm font-medium text-gray-700">
+                    {t("Membership Type")}
+                    <select value={editForm.membershipType} onChange={(event) => setEditForm((current) => ({ ...current, membershipType: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2">
+                      {['STANDARD', 'PREMIUM', 'CORPORATE'].map((type) => <option key={type} value={type}>{t(formatMembershipType(type))}</option>)}
+                    </select>
+                  </label>
+                  <label className="block text-sm font-medium text-gray-700">
+                    {t("Status")}
+                    <select value={editForm.status} onChange={(event) => setEditForm((current) => ({ ...current, status: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2">
+                      {['ACTIVE', 'INACTIVE', 'SUSPENDED', 'EXPIRED'].map((status) => <option key={status} value={status}>{t(status)}</option>)}
+                    </select>
+                  </label>
+                  <label className="block text-sm font-medium text-gray-700 sm:col-span-2">
+                    {t("Address")}
+                    <input type="text" value={editForm.address} onChange={(event) => setEditForm((current) => ({ ...current, address: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" />
+                  </label>
+                  <div className="flex flex-wrap gap-3 sm:col-span-2">
+                    <Button type="submit" isLoading={isSaving}>{t("Save changes")}</Button>
+                    <Button type="button" variant="outline" disabled={isSaving} onClick={() => setIsEditing(false)}>{t("Cancel")}</Button>
+                  </div>
+                </form>
+              )}
+            </CardContent>
+          )}
+        </Card>
+        </div>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <Card className="surface-panel rounded-xl border-0 shadow-none">
           <CardHeader>
@@ -270,7 +521,7 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
           </CardHeader>
           <CardContent className="grid gap-5 sm:grid-cols-2">
             <div>
-              <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{t("Member No.")}</p>
+              <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{t("Patient ID")}</p>
               <p className="mt-1 font-semibold text-slate-900">{member.memberId}</p>
             </div>
             <div>
@@ -282,7 +533,7 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
               <p className="mt-1 font-semibold text-slate-900">{member.phone}</p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{t("Patient ID")}</p>
+              <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{t("Email")}</p>
               <p className="mt-1 font-semibold text-slate-900">{member.email || t("N/A")}</p>
             </div>
             <div>
@@ -320,6 +571,14 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
               <p className="text-sm text-slate-500">
                 {t("Use the issue button to create the first Grand Medical Care PVC card and barcode for this member.")} </p>
             )}
+            {isSuperAdmin && (
+              <div className="flex flex-wrap gap-3 border-t border-slate-200 pt-4">
+                {activeCard && (
+                  <Button variant="outline" size="sm" className="border-red-300 text-red-700" onClick={() => setConfirmAction({ kind: 'deactivateCard' })}>{t("Deactivate card")}</Button>
+                )}
+                <Button variant="outline" size="sm" onClick={() => setConfirmAction({ kind: 'reissueCard' })}>{t("Issue new card")}</Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -330,7 +589,57 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
             <CardTitle>{t("Package balances")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {member.packages?.length ? (
+            {isSuperAdmin && member.packages?.length ? (
+              <div className="space-y-4">
+                {member.packages.map((pkg) => (
+                  <div key={pkg.id} className="rounded-xl border border-slate-200 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{pkg.package.name}</p>
+                        <p className="text-sm text-slate-500">{pkg.package.treatment.name}</p>
+                      </div>
+                      <span className={`rounded px-2 py-0.5 text-xs font-medium ${pkg.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>{t(pkg.status)}</span>
+                    </div>
+                    {editingPackageId === pkg.id ? (
+                      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                        <label className="block text-sm font-medium text-gray-700">
+                          {t("Remaining Sessions")}
+                          <input type="number" min={0} dir="ltr" value={packageForm.remainingSessions} onChange={(event) => setPackageForm((current) => ({ ...current, remainingSessions: Number(event.target.value) }))} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" />
+                        </label>
+                        <label className="block text-sm font-medium text-gray-700">
+                          {t("Expiry Date")}
+                          <input type="date" dir="ltr" value={packageForm.expiryDate} onChange={(event) => setPackageForm((current) => ({ ...current, expiryDate: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" />
+                        </label>
+                        <label className="block text-sm font-medium text-gray-700">
+                          {t("Status")}
+                          <select value={packageForm.status} onChange={(event) => setPackageForm((current) => ({ ...current, status: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2">
+                            {['ACTIVE', 'COMPLETED', 'EXPIRED', 'CANCELLED'].map((status) => <option key={status} value={status}>{t(status)}</option>)}
+                          </select>
+                        </label>
+                        <div className="flex flex-wrap gap-3 sm:col-span-3">
+                          <Button size="sm" isLoading={isSaving} onClick={() => handleSavePackage(pkg)}>{t("Save changes")}</Button>
+                          <Button size="sm" variant="outline" disabled={isSaving} onClick={() => setEditingPackageId('')}>{t("Cancel")}</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="mt-3 grid gap-2 text-sm text-slate-700 sm:grid-cols-3">
+                          <span className="rounded-full bg-slate-100 px-3 py-1">{pkg.remainingSessions} {t("left")}</span>
+                          <span className="rounded-full bg-slate-100 px-3 py-1">{t("Used")} {pkg.usedSessions}</span>
+                          <span className="rounded-full bg-slate-100 px-3 py-1">{t("Expires")} {formatDisplayDate(pkg.expiryDate)}</span>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-3">
+                          <Button size="sm" variant="outline" onClick={() => startEditingPackage(pkg)}>{t("Edit package")}</Button>
+                          {pkg.status !== 'CANCELLED' && (
+                            <Button size="sm" variant="outline" className="border-red-300 text-red-700" onClick={() => setConfirmAction({ kind: 'cancelPackage', id: pkg.id, label: pkg.package.name })}>{t("Cancel package")}</Button>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : member.packages?.length ? (
               <div className="space-y-4">
                 {activePackages.length === 0 ? (
                   <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
@@ -463,6 +772,16 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
                 )}
                 {session.notes && (
                   <p className="mt-2 text-sm text-slate-500">{t("Notes:")} {session.notes}</p>
+                )}
+                {isSuperAdmin && session.status === 'COMPLETED' && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-3 border-red-300 text-red-700"
+                    onClick={() => setConfirmAction({ kind: 'undoSession', id: session.id, label: `${t("Session")} ${session.sessionNumber ?? ''} · ${session.memberPackage?.package.name || session.treatment?.name || ''}` })}
+                  >
+                    {t("Undo session")}
+                  </Button>
                 )}
               </div>
             ))}

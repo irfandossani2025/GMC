@@ -30,6 +30,10 @@ function mapSession(session: any) {
   };
 }
 
+const USABLE_CARD = ['ACTIVE', 'PRINTED'];
+const cardDeactivated = () =>
+  NextResponse.json({ error: 'This membership card has been deactivated. Please use the patient ID or the new card.' }, { status: 410 });
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -76,6 +80,7 @@ export async function GET(request: NextRequest) {
         (await db.membershipCard.findUnique({ where: { cardNumber: query }, include: { member: { include: memberInclude } } }));
 
       if (card?.member) {
+        if (!USABLE_CARD.includes(card.status)) return cardDeactivated();
         member = card.member;
       } else {
         card = null;
@@ -89,7 +94,7 @@ export async function GET(request: NextRequest) {
             { status: 404 }
           );
         }
-        card = member.cards?.[0] || null;
+        card = member.cards?.find((c: any) => USABLE_CARD.includes(c.status)) || null;
       }
     } else if (barcode) {
       card = await db.membershipCard.findUnique({
@@ -133,6 +138,7 @@ export async function GET(request: NextRequest) {
         );
       }
 
+      if (!USABLE_CARD.includes(card.status)) return cardDeactivated();
       member = card.member;
     } else {
       member = await db.member.findUnique({
@@ -172,7 +178,7 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      card = member.cards?.[0] || null;
+      card = member.cards?.find((c: any) => USABLE_CARD.includes(c.status)) || null;
     }
 
     const activePackages = (member.packages || [])

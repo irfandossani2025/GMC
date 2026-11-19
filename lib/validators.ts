@@ -82,6 +82,29 @@ export const updateMemberSchema = z.object({
   membershipType: z.enum(['STANDARD', 'PREMIUM', 'CORPORATE']).optional(),
   expiryDate: optionalDate,
   status: z.enum(['ACTIVE', 'INACTIVE', 'SUSPENDED', 'EXPIRED']).optional(),
+  memberId: z.string().trim().min(1).max(64).regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/, 'Use letters, numbers, hyphens or underscores for the patient ID.').optional(),
+});
+
+export const updateMemberPackageSchema = z.object({
+  remainingSessions: z.coerce.number().int().min(0, 'Remaining sessions cannot be negative.').max(1000).optional(),
+  expiryDate: optionalDate,
+  status: z.enum(['ACTIVE', 'EXPIRED', 'COMPLETED', 'CANCELLED']).optional(),
+});
+
+export const updateTreatmentSchema = z.object({
+  name: z.string().trim().min(2, 'Treatment name is required').optional(),
+  category: z.string().trim().min(2, 'Category is required').optional(),
+  description: optionalTrimmedString,
+  durationMinutes: z.coerce.number().int().min(1).optional(),
+  price: z.coerce.number().min(0).optional(),
+});
+
+export const updateCatalogPackageSchema = z.object({
+  name: z.string().trim().min(2, 'Package name is required').optional(),
+  description: optionalTrimmedString,
+  sessionCount: z.coerce.number().int().min(1, 'Session count must be at least 1').optional(),
+  price: z.coerce.number().min(0).optional(),
+  validityMonths: z.coerce.number().int().min(1).optional(),
 });
 
 export const generateCardSchema = z.object({
