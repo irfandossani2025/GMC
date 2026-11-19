@@ -529,5 +529,9 @@
   "Enter a valid sender email address.": "أدخل عنوان بريد مرسل صحيحاً.",
   "Enter a valid reply-to email address.": "أدخل عنوان بريد رد صحيحاً.",
   "Use TLS for port 465, or STARTTLS for ports 587 and 2525.": "استخدم TLS للمنفذ 465 أو STARTTLS للمنفذين 587 و2525.",
-  "Use a single line.": "استخدم سطراً واحداً."
+  "Use a single line.": "استخدم سطراً واحداً.",
+  "Enter the patient ID to look up the member.": "أدخل رقم المريض للبحث عن العضو.",
+  "e.g. GMC-001": "مثال: GMC-001",
+  "Please enter a patient ID.": "يُرجى إدخال رقم المريض.",
+  "No member found with this patient ID. Please check the ID and try again.": "لم يتم العثور على عضو بهذا الرقم. يُرجى التحقق من رقم المريض والمحاولة مرة أخرى."
 }

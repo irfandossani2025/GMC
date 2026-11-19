@@ -77,8 +77,19 @@ export default function ScanPage() {
 	  const [whatsappLink, setWhatsappLink] = useState('');
 
 	  // Manual entry mode
-	  const [inputMode, setInputMode] = useState<'scan' | 'manual'>('scan');
+	  const [inputMode, setInputMode] = useState<'scan' | 'manual' | 'patient'>('scan');
 	  const [manualCardNumber, setManualCardNumber] = useState('');
+	  const [patientIdInput, setPatientIdInput] = useState('');
+
+	  const currentSearchValue = () =>
+		    (inputMode === 'manual' ? manualCardNumber : inputMode === 'patient' ? patientIdInput : barcode).trim();
+
+	  const buildScanQuery = (searchValue: string) => {
+		    const byPatientId = inputMode === 'patient' || searchValue.toUpperCase().startsWith('GMC-');
+		    return byPatientId
+			      ? `memberId=${encodeURIComponent(searchValue)}`
+			      : `barcode=${encodeURIComponent(searchValue)}`;
+	  };
 
 	  useEffect(() => {
 		      const params = new URLSearchParams(window.location.search);
@@ -90,9 +101,9 @@ export default function ScanPage() {
 
 	  const handleSearch = async () => {
     if(isLoading || isProcessing)return; setReviewing(false);setMessageSuccess(false);
-		      const searchValue = inputMode === 'manual' ? manualCardNumber.trim() : barcode.trim();
+		      const searchValue = currentSearchValue();
 		      if (!searchValue) {
-				        setMessage('Please enter a barcode or card number.');
+				        setMessage(inputMode === 'patient' ? 'Please enter a patient ID.' : 'Please enter a barcode or card number.');
 				        return;
 			  }
 
@@ -102,9 +113,8 @@ export default function ScanPage() {
 		      setSelectedPackageId('');
 		      setWhatsappLink('');
 
-    const isMemberId = searchValue.toUpperCase().startsWith('GMC-');
 		  try {
-				                  const data = await getJson<ScanResult>(`/api/scan?${isMemberId ? `memberId=${encodeURIComponent(searchValue)}` : `barcode=${encodeURIComponent(searchValue)}`}`);
+				                  const data = await getJson<ScanResult>(`/api/scan?${buildScanQuery(searchValue)}`);
 				        setScanResult(data);setNeedsRefresh(false);
 				        // Auto-select first active package
 				        if (data.activePackages.length > 0) {
@@ -112,7 +122,9 @@ export default function ScanPage() {
 						}
 			  } catch (err: unknown) {
 				        const error = err as { message?: string };
-											        setMessage(error.message || 'Member not found. Please check the barcode or card number.');
+											        setMessage(inputMode === 'patient'
+												          ? 'No member found with this patient ID. Please check the ID and try again.'
+												          : error.message || 'Member not found. Please check the barcode or card number.');
 											 } finally {
 												       setIsLoading(false);
 											 }
@@ -131,7 +143,9 @@ export default function ScanPage() {
 
 				    try {
 						      const response = await postJson<SessionProcessResponse>('/api/sessions', {
-								          barcode: scanResult.card?.barcode,
+								          ...(scanResult.card?.barcode
+									            ? { barcode: scanResult.card.barcode }
+									            : { memberId: scanResult.member.memberId }),
 								          packageId: selectedPackageId,
 							  });
 
@@ -145,10 +159,9 @@ export default function ScanPage() {
 							  }
 
 						      // Refresh scan result to show updated session count
-						      const searchValue = inputMode === 'manual' ? manualCardNumber.trim() : barcode.trim();
-						                const isMemberIdRefresh = searchValue.toUpperCase().startsWith('GMC-');
+						      const searchValue = currentSearchValue();
 						                let updated: ScanResult;
- try {updated = await getJson<ScanResult>(`/api/scan?${isMemberIdRefresh ? `memberId=${encodeURIComponent(searchValue)}` : `barcode=${encodeURIComponent(searchValue)}`}`);}
+ try {updated = await getJson<ScanResult>(`/api/scan?${buildScanQuery(searchValue)}`);}
 
 						      catch {setMessage('Session recorded. Search for the patient again before recording another session.');return;}
  setScanResult(updated);setNeedsRefresh(false);setSelectedPackageId('');
@@ -170,7 +183,7 @@ export default function ScanPage() {
 						  }
 				  };
 
-				  const handleModeSwitch = (mode: 'scan' | 'manual') => {
+				  const handleModeSwitch = (mode: 'scan' | 'manual' | 'patient') => {
 					      if(isProcessing)return;setReviewing(false);setMessageSuccess(false);setInputMode(mode);
 					      setMessage('');
 					      setScanResult(null);
@@ -213,9 +226,43 @@ export default function ScanPage() {
 																									  }`}
 																			              >
 																			                {t("Manual Card Entry")} </button>
+															              <button
+																			                disabled={isProcessing} onClick={() => handleModeSwitch('patient')}
+																			                className={`flex-1 sm:flex-none px-4 py-2 text-sm font-medium transition-colors border-l border-gray-200 ${
+																                  inputMode === 'patient'
+																									                     ? 'bg-blue-600 text-white'
+																									                     : 'bg-white text-slate-600 hover:bg-slate-50'
+																									  }`}
+																			              >
+																			                {t("Patient ID")} </button>
 												</div>
 
-												{inputMode === 'scan' ? (
+												{inputMode === 'patient' ? (
+													            <div className="space-y-3">
+														              <p className="text-sm text-slate-500">
+																		                  {t("Enter the patient ID to look up the member.")} </p>
+														              <div className="flex flex-col sm:flex-row gap-2">
+																		                  <input
+																							                    type="text"
+ aria-label={t("Patient ID")}
+																							                    value={patientIdInput}
+																							                    onChange={(e) => setPatientIdInput(e.target.value)}
+																							                    onKeyDown={handleKeyDown}
+																							                    dir="ltr"
+ placeholder={t("e.g. GMC-001")}
+																							                    autoFocus
+																							                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+																							                  />
+																		                  <Button
+																							                    variant="primary"
+																							                    onClick={handleSearch}
+																							                    isLoading={isLoading}
+																							                    className="w-full sm:w-auto"
+																							                  >
+																							                    {t("Look Up")} </Button>
+														              </div>
+													            </div>
+												          ) : inputMode === 'scan' ? (
 													            <div className="flex flex-col sm:flex-row gap-2">
 														              <input
 																		                  type="text"
