@@ -42,7 +42,7 @@ test('Editing remaining sessions keeps totals consistent and reopens a finished 
   let data=null;const db={memberPackage:{findUnique:async()=>({id:'p1',memberId:'m1',usedSessions:4,remainingSessions:0,status:'COMPLETED',expiryDate:new Date('2027-01-01')}),update:async(a)=>{data=a.data;return{...a.data,expiryDate:new Date('2027-01-01')};}}};
   const api=load('app/api/member-packages/[id]/route.ts',{'@/lib/db':{db},'@/lib/validators':validators,'@/lib/security/user-access':access('SUPER_ADMIN')});
   assert.equal((await api.PATCH(req('/api/member-packages/p1','PATCH',{remainingSessions:3}),{params:{id:'p1'}})).status,200);
-  assert.deepEqual(plain(data),{remainingSessions:3,totalSessions:7,status:'ACTIVE'});
+  assert.deepEqual(plain(data),{remainingSessions:3,usedSessions:4,totalSessions:7,status:'ACTIVE'});
 });
 
 test('A deactivated card is refused at reception, but the patient ID still works',async()=>{
@@ -53,4 +53,27 @@ test('A deactivated card is refused at reception, but the patient ID still works
   assert.equal((await api.GET(new NextRequest('https://clinic.test/api/scan?q=CARD-OLD'))).status,410);
   const ok=await api.GET(new NextRequest('https://clinic.test/api/scan?q=16569'));
   assert.equal(ok.status,200);assert.equal((await ok.json()).card,null);
+});
+
+test('Recording a session saves the treatment id and uses one transaction',async()=>{
+  const created={};let inTx=false;
+  const pkg={id:'mp1',packageId:'tp1',usedSessions:2,remainingSessions:28,status:'ACTIVE',package:{name:'Fat Loss'}};
+  const tx={memberPackage:{update:async()=>{assert.ok(inTx);return{...pkg,usedSessions:3,remainingSessions:27,totalSessions:30,package:{name:'Fat Loss',treatmentId:'t1',treatment:{name:'Fat Loss'}}};}},session:{create:async(a)=>{assert.ok(inTx);created.data=a.data;return{id:'s1'};}}};
+  const db={member:{findUnique:async()=>({id:'m1',name:'Irfan',phone:'+96891964422',status:'ACTIVE'})},memberPackage:{findMany:async()=>[pkg]},$transaction:async cb=>{inTx=true;try{return await cb(tx);}finally{inTx=false;}},whatsAppLog:{create:async()=>({})}};
+  const wa=load('lib/whatsapp.ts',{'@/lib/clinic':{CLINIC_NAME:'Grand Medical Care',formatDisplayDate:()=>'x'}});
+  const api=load('app/api/sessions/route.ts',{'@/lib/db':{db},'@/lib/validators':validators,'@/lib/whatsapp':{...wa,sendWhatsAppMessage:async()=>({success:false,method:'link',link:'https://wa.me/x'})}});
+  const res=await api.POST(new NextRequest('https://clinic.test/api/sessions',{method:'POST',headers:{'content-type':'application/json','x-user-id':'u1'},body:JSON.stringify({memberId:'GMC-1',packageId:'mp1'})}));
+  assert.equal(res.status,200);
+  assert.equal(created.data.treatmentId,'t1');
+  assert.ok((await res.json()).whatsappWebLink.startsWith('https://web.whatsapp.com/send?phone=96891964422'));
+});
+
+test('If saving the session fails, no session is used up',async()=>{
+  let committed=false;
+  const pkg={id:'mp1',packageId:'tp1',usedSessions:2,remainingSessions:28,status:'ACTIVE',package:{name:'Fat Loss'}};
+  const db={member:{findUnique:async()=>({id:'m1',name:'I',phone:'1',status:'ACTIVE'})},memberPackage:{findMany:async()=>[pkg]},
+    $transaction:async cb=>{const tx={memberPackage:{update:async()=>({...pkg,package:{treatmentId:'t1'}})},session:{create:async()=>{throw new Error('FK');}}};await cb(tx);committed=true;}};
+  const api=load('app/api/sessions/route.ts',{'@/lib/db':{db},'@/lib/validators':validators,'@/lib/whatsapp':{}});
+  const res=await api.POST(new NextRequest('https://clinic.test/api/sessions',{method:'POST',headers:{'content-type':'application/json','x-user-id':'u1'},body:JSON.stringify({memberId:'GMC-1',packageId:'mp1'})}));
+  assert.equal(res.status,400);assert.equal(committed,false);
 });

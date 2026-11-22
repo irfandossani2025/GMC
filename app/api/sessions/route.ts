@@ -100,30 +100,38 @@ export async function POST(request: NextRequest) {
     }
 
     const nextRemaining = selectedPackage.remainingSessions - 1;
-    const updatedPackage = await db.memberPackage.update({
-      where: { id: selectedPackage.id },
-      data: {
-        usedSessions: { increment: 1 },
-        remainingSessions: { decrement: 1 },
-        status:
-          nextRemaining <= 0 ? 'COMPLETED' : selectedPackage.status,
-      },
-      include: {
-        package: { include: { treatment: true } },
-      },
-    });
 
-    const session = await db.session.create({
-      data: {
-        memberId: member.id,
-        treatmentId: selectedPackage.packageId,
-        packageId: selectedPackage.id,
-        sessionNumber: selectedPackage.usedSessions + 1,
-        status: 'COMPLETED',
-        completedAt: new Date(),
-        processedByUserId: userId,
-        notes: data.notes,
-      },
+    // Both steps succeed together or not at all, so a failed save can never
+    // use up a session without a session record.
+    const { updatedPackage, session } = await db.$transaction(async (tx) => {
+      const updatedPackage = await tx.memberPackage.update({
+        where: { id: selectedPackage.id },
+        data: {
+          usedSessions: { increment: 1 },
+          remainingSessions: { decrement: 1 },
+          status:
+            nextRemaining <= 0 ? 'COMPLETED' : selectedPackage.status,
+        },
+        include: {
+          package: { include: { treatment: true } },
+        },
+      });
+
+      const session = await tx.session.create({
+        data: {
+          memberId: member!.id,
+          // The treatment this package belongs to (not the package's own id).
+          treatmentId: updatedPackage.package.treatmentId,
+          packageId: selectedPackage.id,
+          sessionNumber: selectedPackage.usedSessions + 1,
+          status: 'COMPLETED',
+          completedAt: new Date(),
+          processedByUserId: userId,
+          notes: data.notes,
+        },
+      });
+
+      return { updatedPackage, session };
     });
 
     const message = buildSessionRecordedMessage({

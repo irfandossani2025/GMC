@@ -612,5 +612,7 @@
   "WhatsApp Web opened in another tab with the message and card link typed in. The card picture is copied: click in the chat, press Ctrl+V to paste it, then press Send.": "تم فتح واتساب ويب في علامة تبويب أخرى مع كتابة الرسالة ورابط البطاقة. تم نسخ صورة البطاقة: انقر داخل المحادثة واضغط Ctrl+V للصقها، ثم اضغط إرسال.",
   "WhatsApp Web opened in another tab with the message and card link typed in. The card picture was downloaded: attach it with the paperclip in the chat, then press Send.": "تم فتح واتساب ويب في علامة تبويب أخرى مع كتابة الرسالة ورابط البطاقة. تم تنزيل صورة البطاقة: أرفقها باستخدام مشبك الورق في المحادثة، ثم اضغط إرسال.",
   "Session confirmed. WhatsApp Web opened in another tab with the message typed in. Press Send there.": "تم تأكيد الجلسة. تم فتح واتساب ويب في علامة تبويب أخرى مع كتابة الرسالة. اضغط إرسال هناك.",
-  "A WhatsApp message was prepared for the patient. If the WhatsApp tab didn't open, or you closed it, open it again here.": "تم تجهيز رسالة واتساب للمريض. إذا لم تُفتح علامة تبويب واتساب أو أغلقتها، افتحها مرة أخرى من هنا."
+  "A WhatsApp message was prepared for the patient. If the WhatsApp tab didn't open, or you closed it, open it again here.": "تم تجهيز رسالة واتساب للمريض. إذا لم تُفتح علامة تبويب واتساب أو أغلقتها، افتحها مرة أخرى من هنا.",
+  "Used sessions": "الجلسات المستخدمة",
+  "Used sessions cannot be negative.": "لا يمكن أن تكون الجلسات المستخدمة سالبة."
 }

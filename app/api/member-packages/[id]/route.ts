@@ -15,6 +15,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     if (!current) return NextResponse.json({ error: 'Package not found' }, { status: 404 });
 
     const remaining = data.remainingSessions ?? current.remainingSessions;
+    const used = data.usedSessions ?? current.usedSessions;
     let status = data.status ?? current.status;
     // Keep status consistent with the balance unless the Super Admin chose cancel/expire.
     if (!data.status) {
@@ -26,7 +27,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       where: { id: current.id },
       data: {
         remainingSessions: remaining,
-        totalSessions: current.usedSessions + remaining,
+        usedSessions: used,
+        totalSessions: used + remaining,
         ...(data.expiryDate ? { expiryDate: data.expiryDate } : {}),
         status,
       },
@@ -40,6 +42,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       memberId: current.memberId,
       changes: {
         remainingSessions: { from: current.remainingSessions, to: updated.remainingSessions },
+        usedSessions: { from: current.usedSessions, to: updated.usedSessions },
         expiryDate: { from: current.expiryDate, to: updated.expiryDate },
         status: { from: current.status, to: updated.status },
       },

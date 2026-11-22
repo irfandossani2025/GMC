@@ -126,7 +126,7 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [isConfirming, setIsConfirming] = useState(false);
   const [editingPackageId, setEditingPackageId] = useState('');
-  const [packageForm, setPackageForm] = useState({ remainingSessions: 0, expiryDate: '', status: 'ACTIVE' });
+  const [packageForm, setPackageForm] = useState({ remainingSessions: 0, usedSessions: 0, expiryDate: '', status: 'ACTIVE' });
 
   // WhatsApp card sending
   const [cardShareUrl, setCardShareUrl] = useState('');
@@ -306,7 +306,7 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
 
   const startEditingPackage = (pkg: MemberPackageRecord) => {
     setEditingPackageId(pkg.id);
-    setPackageForm({ remainingSessions: pkg.remainingSessions, expiryDate: toDateInput(pkg.expiryDate), status: pkg.status });
+    setPackageForm({ remainingSessions: pkg.remainingSessions, usedSessions: pkg.usedSessions, expiryDate: toDateInput(pkg.expiryDate), status: pkg.status });
   };
 
   const handleSavePackage = async (pkg: MemberPackageRecord) => {
@@ -315,6 +315,7 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
       setActionError('');
       await patchJson(`/api/member-packages/${pkg.id}`, {
         remainingSessions: Number(packageForm.remainingSessions),
+        usedSessions: Number(packageForm.usedSessions),
         ...(packageForm.expiryDate ? { expiryDate: packageForm.expiryDate } : {}),
         ...(packageForm.status !== pkg.status ? { status: packageForm.status } : {}),
       });
@@ -700,7 +701,11 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
                       <span className={`rounded px-2 py-0.5 text-xs font-medium ${pkg.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>{t(pkg.status)}</span>
                     </div>
                     {editingPackageId === pkg.id ? (
-                      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                      <div className="mt-3 grid gap-3 sm:grid-cols-4">
+                        <label className="block text-sm font-medium text-gray-700">
+                          {t("Used sessions")}
+                          <input type="number" min={0} dir="ltr" value={packageForm.usedSessions} onChange={(event) => setPackageForm((current) => ({ ...current, usedSessions: Number(event.target.value) }))} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" />
+                        </label>
                         <label className="block text-sm font-medium text-gray-700">
                           {t("Remaining Sessions")}
                           <input type="number" min={0} dir="ltr" value={packageForm.remainingSessions} onChange={(event) => setPackageForm((current) => ({ ...current, remainingSessions: Number(event.target.value) }))} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" />
@@ -715,7 +720,7 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
                             {['ACTIVE', 'COMPLETED', 'EXPIRED', 'CANCELLED'].map((status) => <option key={status} value={status}>{t(status)}</option>)}
                           </select>
                         </label>
-                        <div className="flex flex-wrap gap-3 sm:col-span-3">
+                        <div className="flex flex-wrap gap-3 sm:col-span-4">
                           <Button size="sm" isLoading={isSaving} onClick={() => handleSavePackage(pkg)}>{t("Save changes")}</Button>
                           <Button size="sm" variant="outline" disabled={isSaving} onClick={() => setEditingPackageId('')}>{t("Cancel")}</Button>
                         </div>

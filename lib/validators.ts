@@ -87,6 +87,7 @@ export const updateMemberSchema = z.object({
 
 export const updateMemberPackageSchema = z.object({
   remainingSessions: z.coerce.number().int().min(0, 'Remaining sessions cannot be negative.').max(1000).optional(),
+  usedSessions: z.coerce.number().int().min(0, 'Used sessions cannot be negative.').max(1000).optional(),
   expiryDate: optionalDate,
   status: z.enum(['ACTIVE', 'EXPIRED', 'COMPLETED', 'CANCELLED']).optional(),
 });
