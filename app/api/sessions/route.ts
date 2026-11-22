@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { buildSessionUsedMessage, buildWhatsAppLink, sendWhatsAppMessage } from '@/lib/whatsapp';
+import { buildSessionRecordedMessage, buildWhatsAppLink, buildWhatsAppWebLink, clinicDateLabel, sendWhatsAppMessage } from '@/lib/whatsapp';
 import { processSessionSchema } from '@/lib/validators';
 
 export const dynamic = 'force-dynamic';
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
           nextRemaining <= 0 ? 'COMPLETED' : selectedPackage.status,
       },
       include: {
-        package: true,
+        package: { include: { treatment: true } },
       },
     });
 
@@ -126,11 +126,15 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const message = buildSessionUsedMessage(
-      member.name,
-      updatedPackage.package.name,
-      updatedPackage.remainingSessions
-    );
+    const message = buildSessionRecordedMessage({
+      name: member.name,
+      treatmentName: updatedPackage.package.treatment?.name,
+      packageName: updatedPackage.package.name,
+      date: clinicDateLabel(),
+      usedSessions: updatedPackage.usedSessions,
+      totalSessions: updatedPackage.totalSessions,
+      remainingSessions: updatedPackage.remainingSessions,
+    });
 
     // Send WhatsApp notification (auto-send if API credentials configured, fallback to link)
     const whatsappResult = await sendWhatsAppMessage(member.phone, message);
@@ -150,6 +154,8 @@ export async function POST(request: NextRequest) {
 	      whatsappSent: whatsappResult.success,
 	      whatsappMethod: whatsappResult.method,
 	      whatsappLink: whatsappResult.link ?? null,
+	      // Opens WhatsApp Web (clinic's logged-in number) to the member's phone with the message typed in.
+	      whatsappWebLink: whatsappResult.success ? null : buildWhatsAppWebLink(member.phone, message),
 	});
 } catch (error) {
     console.error('Session processing error:', error);

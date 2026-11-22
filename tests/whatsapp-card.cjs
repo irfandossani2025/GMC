@@ -19,3 +19,10 @@ test('WhatsApp Web link uses the member phone in international format',()=>{
   assert.ok(link.startsWith('https://web.whatsapp.com/send?phone=96895404043&text='));
   assert.ok(decodeURIComponent(link).includes('https://x.test/card/abc'));
 });
+test('Session message has treatment, date and sessions left',()=>{
+  const m=wa.buildSessionRecordedMessage({name:'Hasan',treatmentName:'Laser',packageName:'Ministries',date:'22 Nov 2026',usedSessions:2,totalSessions:6,remainingSessions:4});
+  for(const part of ['Hello Hasan','Treatment: Laser (Ministries)','Date: 22 Nov 2026','Sessions used: 2 of 6','Sessions remaining: 4']) assert.ok(m.includes(part),part);
+  const last=wa.buildSessionRecordedMessage({name:'H',treatmentName:'Laser',packageName:'Laser',date:'x',usedSessions:6,totalSessions:6,remainingSessions:0});
+  assert.ok(last.includes('Treatment: Laser\n'));assert.ok(last.includes('last session'));
+  assert.equal(wa.clinicDateLabel(new Date('2026-11-22T21:30:00Z')),'23 Nov 2026');
+});

@@ -191,3 +191,37 @@ export function buildCardShareMessage(name: string, memberId: string, expiryDate
     'Please show this card at reception on every visit.',
   ].join('\n');
 }
+
+/** Today's date as the clinic sees it (Oman time), e.g. "22 Nov 2026". */
+export function clinicDateLabel(date: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Muscat' }).format(date);
+}
+
+/** Message sent to the member after a session is recorded at reception. */
+export function buildSessionRecordedMessage(details: {
+  name: string;
+  treatmentName?: string | null;
+  packageName: string;
+  date: string;
+  usedSessions: number;
+  totalSessions: number;
+  remainingSessions: number;
+}): string {
+  const treatment = details.treatmentName && details.treatmentName !== details.packageName
+    ? `${details.treatmentName} (${details.packageName})`
+    : details.packageName;
+  return [
+    `Hello ${details.name},`,
+    '',
+    `Thank you for visiting ${CLINIC_NAME} today.`,
+    '',
+    `Treatment: ${treatment}`,
+    `Date: ${details.date}`,
+    `Sessions used: ${details.usedSessions} of ${details.totalSessions}`,
+    `Sessions remaining: ${details.remainingSessions}`,
+    '',
+    details.remainingSessions > 0
+      ? 'We look forward to seeing you at your next visit.'
+      : 'This was the last session in your package. Please speak to our reception team to renew.',
+  ].join('\n');
+}

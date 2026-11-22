@@ -59,6 +59,7 @@ interface SessionProcessResponse {
 	  session: ScanSession;
 	  memberPackage: ScanPackage;
 	  whatsappLink: string;
+	  whatsappWebLink?: string | null;
 	    whatsappSent?: boolean;
 		        whatsappMethod?: string;
 }
@@ -148,13 +149,18 @@ export default function ScanPage() {
 								          packageId: selectedPackageId,
 							  });
 
+						      // Open WhatsApp Web straight away with the message typed in for the member.
+						      const webLink = response.whatsappWebLink || '';
+						      const opened = !response.whatsappSent && webLink ? !!window.open(webLink, 'gmc-whatsapp') : false;
 						      const msg = response.whatsappSent
 							          ? 'Session confirmed. WhatsApp notification sent automatically.'
-							          : 'Session confirmed. Use the button below to send a WhatsApp notification.';
+							          : opened
+								            ? 'Session confirmed. WhatsApp Web opened in another tab with the message typed in. Press Send there.'
+								            : 'Session confirmed. Use the button below to send a WhatsApp notification.';
 
 						      setMessage(msg);setMessageSuccess(true);setReviewing(false);setNeedsRefresh(true);
-						      if (response.whatsappLink) {
-								          setWhatsappLink(response.whatsappLink);
+						      if (webLink || response.whatsappLink) {
+								          setWhatsappLink(webLink || response.whatsappLink);
 							  }
 
 						      // Refresh scan result to show updated session count
@@ -389,10 +395,10 @@ export default function ScanPage() {
 									              <Card>
 										                <CardContent className="pt-4">
 															                <p className="text-sm text-slate-600">
-																				                  {t("A WhatsApp notification was prepared for the patient. Open it to review or send the confirmation message.")} </p>
+																				                  {t("A WhatsApp message was prepared for the patient. If the WhatsApp tab didn't open, or you closed it, open it again here.")} </p>
 															                <Button
 																				                  variant="secondary"
-																				                  onClick={() => window.open(whatsappLink, '_blank', 'noopener,noreferrer')}
+																				                  onClick={() => window.open(whatsappLink, whatsappLink.includes('web.whatsapp.com') ? 'gmc-whatsapp' : '_blank')}
 																				                >
 																				                  {t("Open WhatsApp message")} </Button>
 										  </CardContent>
