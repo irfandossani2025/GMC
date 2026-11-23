@@ -67,12 +67,13 @@ test('Arabic registration form translates labels while retaining membership and 
   currentLanguage='en';
   assert.match(renderToStaticMarkup(React.createElement(Page)),/Create a new patient/);
 });
-test('The Arabic login form keeps password and email controls and renders translated labels', () => {
+test('The Arabic login form uses username and password and renders translated labels', () => {
   currentLanguage='ar';
   const Page=load('app/auth/login/page.tsx').default;
   const html=renderToStaticMarkup(React.createElement(Page));
   assert.match(html,/تسجيل الدخول/);
-  assert.match(html,/البريد الإلكتروني/);
+  assert.match(html,/اسم المستخدم/);
+  assert.doesNotMatch(html,/type="email"/);
   assert.match(html,/كلمة المرور/);
   assert.match(html,/type="password"/);
   assert.match(html,/autoComplete="current-password"/);

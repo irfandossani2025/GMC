@@ -13,7 +13,7 @@ import { postJson } from '@/lib/api-client';
 export default function SuperAdminLoginPage() {
   const { t } = useLanguage();
   const router = useRouter();
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('superadmingmc');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -35,7 +35,7 @@ export default function SuperAdminLoginPage() {
     setIsLoading(true);
 
     try {
-      const response = await postJson<{ success: boolean }>('/api/auth/login', { email, password, superAdmin: true });
+      const response = await postJson<{ success: boolean }>('/api/auth/login', { username, password, superAdmin: true });
       
       if (response.success) {
         router.push(getNextPath());
@@ -74,13 +74,13 @@ export default function SuperAdminLoginPage() {
               )}
 
               <Input
-                label={t("Email Address")}
-                aria-label={t("Email Address")}
+                label={t("Username")}
+                aria-label={t("Username")}
                 autoComplete="username"
-                type="email"
-                placeholder="superadmin@grandmedicalcare.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                type="text"
+                placeholder="superadmingmc"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 required
               />
 

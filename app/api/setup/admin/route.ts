@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Initial admin setup error:', error);
     return NextResponse.json(
-      { error: 'Failed to create initial admin user.' },
+		{ error: 'Failed to create initial admin user.' },
       { status: 400 }
     );
   }

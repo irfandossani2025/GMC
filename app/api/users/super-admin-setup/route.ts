@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     const result = await db.$transaction(async tx => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(7231042)`;
       if (await tx.user.count({ where: { role: 'SUPER_ADMIN' } })) return null;
-      const user = await tx.user.create({ data: { name: data.name, email: process.env.SUPER_ADMIN_SETUP_EMAIL!, password, role: 'SUPER_ADMIN', active: true }, select: { id: true, email: true } });
+      const user = await tx.user.create({ data: { name: data.name, username: 'superadmingmc', email: process.env.SUPER_ADMIN_SETUP_EMAIL!, password, role: 'SUPER_ADMIN', active: true }, select: { id: true, username: true, email: true } });
       await tx.auditLog.create({ data: { action: 'CREATE_SUPER_ADMIN', entityType: 'User', entityId: user.id, userId: actor.id, changes: JSON.stringify({ role: 'SUPER_ADMIN' }) } });
       return user;
     });

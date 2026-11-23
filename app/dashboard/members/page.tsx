@@ -48,7 +48,7 @@ export default function MembersPage() {
                     <tr key={member.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 text-sm text-gray-900 font-mono">{member.memberId}</td>
                       <td className="px-6 py-4 text-sm text-gray-900"><Link href={`/dashboard/members/${member.id}`} className="patient-name-link"><bdi>{member.name}</bdi></Link></td>
-                      <td className="px-6 py-4 text-sm text-gray-600">{member.phone}</td>
+                      <td className="px-6 py-4 text-sm text-gray-600"><bdi dir="ltr">{member.phone}</bdi></td>
                       <td className="px-6 py-4 text-sm">
                         <span className="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                           {t(formatMembershipType(member.membershipType))}

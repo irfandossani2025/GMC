@@ -11,6 +11,7 @@ import { getJson, postJson, patchJson, deleteJson } from '@/lib/api-client';
 
 interface StaffUser {
 	  id: string;
+  username: string | null;
 	  name: string;
 	  email: string;
 	  role: 'SUPER_ADMIN' | 'ADMIN' | 'STAFF';
@@ -43,7 +44,7 @@ export default function UsersPage() {
 	  const [showAddForm, setShowAddForm] = useState(false);
 	  const [editingUser, setEditingUser] = useState<StaffUser | null>(null);
 	  const [formData, setFormData] = useState({
-		      name: '', email: '', password: '', role: 'STAFF' as 'SUPER_ADMIN' | 'ADMIN' | 'STAFF',
+		      name: '', email: '', username: '', password: '', role: 'STAFF' as 'SUPER_ADMIN' | 'ADMIN' | 'STAFF',
 	  });
 	  const [formError, setFormError] = useState('');
 	  const [submitting, setSubmitting] = useState(false);
@@ -70,7 +71,7 @@ export default function UsersPage() {
 	  };
 	
 	  const resetForm = () => {
-		      setFormData({ name: '', email: '', password: '', role: 'STAFF' });
+		      setFormData({ name: '', email: '', username: '', password: '', role: 'STAFF' });
 		      setFormError('');
 		      setShowAddForm(false);
 		      setEditingUser(null);
@@ -85,6 +86,7 @@ export default function UsersPage() {
 							        const updateData: any = {
 										          name: formData.name,
 										          email: formData.email,
+        ...(editingUser.role === 'SUPER_ADMIN' ? {} : { username: formData.username.trim().toLowerCase() }),
 										          ...(editingUser.role === 'SUPER_ADMIN' ? {} : { role: formData.role }),
 									};
 							        if (formData.password) updateData.password = formData.password;
@@ -115,7 +117,7 @@ export default function UsersPage() {
 	
 	  const openEditForm = (user: StaffUser) => {
 		      setEditingUser(user);
-		      setFormData({ name: user.name, email: user.email, password: '', role: user.role });
+		      setFormData({ name: user.name, email: user.email, username: user.username || '', password: '', role: user.role });
 		      setShowAddForm(true);
 		      setFormError('');
 	  };
@@ -167,6 +169,18 @@ export default function UsersPage() {
 																												                    required
 																												                  />
 																	  </div>
+																	                  {editingUser && editingUser.role !== 'SUPER_ADMIN' && (
+																	                    <div>
+																	                      <label htmlFor="field-staff-username" className="block text-sm font-medium text-gray-700 mb-1">{t("Username")}</label>
+																	                      <Input id="field-staff-username"
+																	                        value={formData.username}
+																	                        onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))}
+																	                        placeholder={t("e.g. sarah")}
+																	                        autoComplete="off"
+																	                      />
+																	                      <p className="text-xs text-gray-500 mt-1">{t("Used to sign in. 3-32 letters, numbers, dots, hyphens or underscores.")}</p>
+																	                    </div>
+																	                  )}
 																	                  <div>
 																						                    <label htmlFor="field-app-dashboard-users-page-tsx-2" className="block text-sm font-medium text-gray-700 mb-1">{t("Email Address *")}</label>
 																						                    <Input id="field-app-dashboard-users-page-tsx-2"
@@ -240,6 +254,8 @@ export default function UsersPage() {
 															                  <thead>
 																				                    <tr className="border-b border-gray-200">
 																										                    <th className="text-left py-3 px-2 font-semibold text-gray-700">{t("Name")}</th>
+<th className="text-left py-3 px-2 font-semibold text-gray-700">{t("Username")}</th>
+<th className="text-left py-3 px-2 font-semibold text-gray-700">{t("User ID")}</th>
 																										                    <th className="text-left py-3 px-2 font-semibold text-gray-700">{t("Email")}</th>
 																										                    <th className="text-left py-3 px-2 font-semibold text-gray-700">{t("Role")}</th>
 																										                    <th className="text-left py-3 px-2 font-semibold text-gray-700">{t("Status")}</th>
@@ -252,6 +268,8 @@ export default function UsersPage() {
 																				  {users.map((user) => (
 																					                      <tr key={user.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
 																						                        <td className="py-3 px-2 font-medium text-gray-900">{user.name}</td>
+<td className="py-3 px-2 text-gray-600">{user.username || t("Not set")}</td>
+<td className="py-3 px-2 font-mono text-xs text-gray-600 break-all" title={user.id}>{user.id}</td>
 																						                        <td className="py-3 px-2 text-gray-600">{user.email}</td>
 																						                        <td className="py-3 px-2">
 																													                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ROLE_COLORS[user.role]}`}>

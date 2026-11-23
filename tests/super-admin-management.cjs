@@ -1,5 +1,5 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const vm=require('node:vm');const ts=require('typescript');const {NextRequest,NextResponse}=require('next/server');
-function load(file,mocks={}) {const js=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020,esModuleInterop:true}}).outputText;const module={exports:{}};vm.runInNewContext(js,{module,exports:module.exports,require:n=>n in mocks?mocks[n]:require(n),console,Date,Intl,URL,JSON});return module.exports;}
+function load(file,mocks={}) {const js=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020,esModuleInterop:true}}).outputText;const module={exports:{}};vm.runInNewContext(js,{module,exports:module.exports,require:n=>n in mocks?mocks[n]:require(n),console,Date,Intl,URL,JSON,process});return module.exports;}
 const plain=v=>JSON.parse(JSON.stringify(v));
 const validators=load('lib/validators.ts');
 function access(role){return {requireSuperAdmin:async()=>role==='SUPER_ADMIN'?{user:{id:'u1',name:'Owner',role}}:{response:NextResponse.json({error:'Only the Super Admin can make this change.'},{status:403})},recordAudit:async()=>{}};}
@@ -78,4 +78,16 @@ test('If saving the session fails, no session is used up',async()=>{
   const api=load('app/api/sessions/route.ts',{'@/lib/db':{db},'@/lib/validators':validators,'@/lib/whatsapp-cloud/notify':{sendSessionConfirmation:async()=>{throw new Error('should not send');}}});
   const res=await api.POST(new NextRequest('https://clinic.test/api/sessions',{method:'POST',headers:{'content-type':'application/json','x-user-id':'u1'},body:JSON.stringify({memberId:'GMC-1',packageId:'mp1'})}));
   assert.equal(res.status,400);assert.equal(committed,false);
+});
+
+test('Staff sign in with their username (not email)',async()=>{
+  const users={sarah:{id:'u1',username:'sarah',email:'s@gmc.com',name:'Sarah',role:'STAFF',active:true,password:'HASH'}};
+  let queried=null;
+  const db={user:{findUnique:async({where})=>{queried=where;return where.username?users[where.username]||null:null;}}};
+  const api=load('app/api/auth/login/route.ts',{'@/lib/db':{db},'@/lib/auth':{verifyPassword:async(p,h)=>p==='secret123'&&h==='HASH',signToken:()=>'TOKEN'}});
+  const login=(body)=>api.POST(new NextRequest('https://clinic.test/api/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}));
+  let res=await login({username:'Sarah',password:'secret123'});
+  assert.equal(res.status,200);assert.deepEqual(plain(queried),{username:'sarah'});
+  res=await login({username:'sarah',password:'wrong-pass'});assert.equal(res.status,401);
+  res=await login({email:'s@gmc.com',password:'secret123'});assert.equal(res.status,400);
 });
