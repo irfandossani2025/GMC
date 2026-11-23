@@ -10,6 +10,7 @@ import { postJson } from '@/lib/api-client';
 
 const navigation = [
  {label: 'Email settings', href: '/dashboard/settings/email', icon: 'mail', roles: ['SUPER_ADMIN'], group: 'Settings'},
+ {label: 'WhatsApp settings', href: '/dashboard/settings/whatsapp', icon: 'chat', roles: ['SUPER_ADMIN'], group: 'Settings'},
  {label: 'Overview', href: '/dashboard', icon: 'dashboard', roles: ['ADMIN', 'MANAGER'], group: 'Workspace'},
  {label: 'Patients', href: '/dashboard/members', icon: 'patients', roles: ['ADMIN', 'MANAGER'], group: 'Workspace'},
  {label: 'Scan card', href: '/dashboard/scan', icon: 'scan', roles: ['ADMIN', 'MANAGER', 'STAFF'], group: 'Workspace'},

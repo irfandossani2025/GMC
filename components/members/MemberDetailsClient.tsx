@@ -9,7 +9,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { MembershipCardPreview } from '@/components/cards/MembershipCardPreview';
 import { deleteJson, getJson, patchJson, postJson } from '@/lib/api-client';
 import { downloadCardPDF, renderCardImage } from '@/lib/pdf';
-import { buildCardIssuedMessage, buildCardShareMessage, buildWelcomeMessage, buildWhatsAppLink, buildWhatsAppWebLink } from '@/lib/whatsapp';
 import { formatMembershipType } from '@/lib/clinic';
 
 interface MemberDetailsClientProps {
@@ -93,6 +92,25 @@ type ConfirmAction =
   | { kind: 'deactivate' | 'reactivate' | 'deactivateCard' | 'reissueCard' }
   | { kind: 'cancelPackage' | 'undoSession'; id: string; label: string };
 
+interface CardWhatsAppState {
+  configured: boolean;
+  reason: string | null;
+  autoSend: boolean;
+  cardId: string | null;
+  sentAt: string | null;
+  lastAttemptAt: string | null;
+  lastStatus: string | null;
+  lastError: string | null;
+}
+
+const blobToBase64 = (blob: Blob) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error('Could not read the card picture.'));
+    reader.readAsDataURL(blob);
+  });
+
 const toDateInput = (value?: string) => (value ? new Date(value).toISOString().slice(0, 10) : '');
 
 interface TreatmentPackageResponse {
@@ -128,11 +146,10 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
   const [editingPackageId, setEditingPackageId] = useState('');
   const [packageForm, setPackageForm] = useState({ remainingSessions: 0, usedSessions: 0, expiryDate: '', status: 'ACTIVE' });
 
-  // WhatsApp card sending
-  const [cardShareUrl, setCardShareUrl] = useState('');
-  const [cardImage, setCardImage] = useState<Blob | null>(null);
-  const [whatsappStatus, setWhatsappStatus] = useState<{ type: 'success' | 'error'; text: string; copied?: boolean } | null>(null);
-  const [isPreparingWhatsapp, setIsPreparingWhatsapp] = useState(false);
+  // WhatsApp (Meta WhatsApp API): the card is sent from the clinic's dedicated number.
+  const [cardWhatsApp, setCardWhatsApp] = useState<CardWhatsAppState | null>(null);
+  const [isSendingCard, setIsSendingCard] = useState(false);
+  const autoSendTried = useRef<string>('');
   const adminPanelRef = useRef<HTMLDivElement | null>(null);
   const frontCardRef = useRef<HTMLDivElement | null>(null);
   const backCardRef = useRef<HTMLDivElement | null>(null);
@@ -180,80 +197,57 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
       .catch(() => setIsSuperAdmin(false));
   }, []);
 
-  // Prepare the card link and the card picture in advance, so the button works instantly.
-  useEffect(() => {
-    setCardShareUrl('');
-    setCardImage(null);
-    if (!member || !activeCard) return;
-    let cancelled = false;
-    getJson<{ url: string }>(`/api/members/${member.id}/card-share`)
-      .then((response) => { if (!cancelled) setCardShareUrl(response.url); })
-      .catch(() => {});
-    const timer = window.setTimeout(() => {
-      if (!frontCardRef.current) return;
-      renderCardImage(frontCardRef.current, backCardRef.current || undefined)
-        .then((blob) => { if (!cancelled) setCardImage(blob); })
-        .catch(() => {});
-    }, 800);
-    return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [member?.id, member?.name, member?.expiryDate, member?.memberId, activeCard?.id]);
-
-  const downloadCardImage = (blob: Blob) => {
-    if (!member) return;
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${member.memberId}-membership-card.png`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleSendCardWhatsApp = async () => {
-    if (!member || !activeCard) return;
-    setWhatsappStatus(null);
-    setIsPreparingWhatsapp(true);
+  const loadCardWhatsApp = async () => {
+    if (!member) return null;
     try {
-      let url = cardShareUrl;
-      if (!url) {
-        url = (await getJson<{ url: string }>(`/api/members/${member.id}/card-share`)).url;
-        setCardShareUrl(url);
-      }
-
-      // 1) Copy the card picture so reception can paste it into the chat.
-      let copied = false;
-      let image = cardImage;
-      try {
-        if (!image && frontCardRef.current) image = await renderCardImage(frontCardRef.current, backCardRef.current || undefined);
-        if (image && typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
-          await navigator.clipboard.write([new ClipboardItem({ 'image/png': image })]);
-          copied = true;
-        }
-      } catch {
-        copied = false;
-      }
-
-      // 2) Open WhatsApp Web to the member's own phone number, message typed in.
-      const message = buildCardShareMessage(member.name, member.memberId, member.expiryDate, url);
-      const opened = window.open(buildWhatsAppWebLink(member.phone, message), 'gmc-whatsapp');
-
-      if (!copied && image) downloadCardImage(image);
-      setWhatsappStatus({
-        type: opened ? 'success' : 'error',
-        copied,
-        text: !opened
-          ? 'Chrome blocked the WhatsApp tab. Allow pop-ups for this site, then press the button again.'
-          : copied
-            ? 'WhatsApp Web opened in another tab with the message and card link typed in. The card picture is copied: click in the chat, press Ctrl+V to paste it, then press Send.'
-            : 'WhatsApp Web opened in another tab with the message and card link typed in. The card picture was downloaded: attach it with the paperclip in the chat, then press Send.',
-      });
-    } catch (error) {
-      setWhatsappStatus({ type: 'error', text: error instanceof Error ? error.message : 'Could not prepare the WhatsApp message.' });
-    } finally {
-      setIsPreparingWhatsapp(false);
+      const state = await getJson<CardWhatsAppState>(`/api/whatsapp/card?memberId=${member.id}`);
+      setCardWhatsApp(state);
+      return state;
+    } catch {
+      return null;
     }
   };
+
+  /** Makes the card picture in the browser and asks the server to send it via the Meta WhatsApp API. */
+  const sendCardOnWhatsApp = async (automatic: boolean) => {
+    if (!member || !activeCard || !frontCardRef.current) return;
+    setIsSendingCard(true);
+    if (!automatic) setActionError('');
+    try {
+      const blob = await renderCardImage(frontCardRef.current, backCardRef.current || undefined, 2);
+      const image = await blobToBase64(blob);
+      const result = await postJson<CardWhatsAppState & { status: string; error?: string }>('/api/whatsapp/card', {
+        memberId: member.id,
+        cardId: activeCard.id,
+        image,
+        automatic,
+      });
+      setCardWhatsApp((current) => ({ ...(current as CardWhatsAppState), ...result, autoSend: false }));
+      if (!automatic) {
+        if (result.status === 'sent') setNotice('Membership card sent on WhatsApp.');
+        else if (result.error) setActionError(result.error);
+      }
+    } catch (error) {
+      if (!automatic) setActionError(error instanceof Error ? error.message : 'WhatsApp card could not be sent.');
+      await loadCardWhatsApp();
+    } finally {
+      setIsSendingCard(false);
+    }
+  };
+
+  // Check the card's WhatsApp status; send automatically once for a newly issued card.
+  useEffect(() => {
+    setCardWhatsApp(null);
+    if (!member || !activeCard) return;
+    let cancelled = false;
+    loadCardWhatsApp().then((state) => {
+      if (cancelled || !state?.autoSend || autoSendTried.current === activeCard.id) return;
+      autoSendTried.current = activeCard.id;
+      // Give the card preview a moment to finish drawing (logo + barcode) before taking the picture.
+      window.setTimeout(() => { if (!cancelled) sendCardOnWhatsApp(true); }, 1200);
+    });
+    return () => { cancelled = true; };
+  }, [member?.id, activeCard?.id]);
 
   useEffect(() => {
     if (confirmAction || isEditing) adminPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -449,14 +443,6 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
     }
   };
 
-  const openWhatsApp = (message: string) => {
-    if (!member) {
-      return;
-    }
-
-    window.open(buildWhatsAppLink(member.phone, message), '_blank', 'noopener,noreferrer');
-  };
-
   if (isLoading) {
     return <div className="py-16 text-center text-slate-500">{t("Loading member details...")}</div>;
   }
@@ -474,21 +460,10 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
     );
   }
 
-  const welcomeMessage = buildWelcomeMessage(member.name, member.memberId, member.expiryDate);
-  const cardMessage = buildCardIssuedMessage(member.name, member.memberId, member.expiryDate);
 
   return (
     <div className="space-y-8">{actionError && <div role="alert" className="feedback-banner error">{t(actionError)}</div>}
       {notice && <div role="status" className="feedback-banner success">{t(notice)}</div>}
-      {whatsappStatus && (
-        <div role={whatsappStatus.type === 'success' ? 'status' : 'alert'} className={`feedback-banner ${whatsappStatus.type}`}>
-          <p>{t(whatsappStatus.text)}</p>
-          <p className="mt-1 text-sm">{t('Sending to')} <bdi dir="ltr">{member.phone}</bdi></p>
-          {whatsappStatus.type === 'success' && whatsappStatus.copied && cardImage && (
-            <button type="button" className="mt-2 text-sm underline" onClick={() => downloadCardImage(cardImage)}>{t('Download the card picture instead')}</button>
-          )}
-        </div>
-      )}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <Link href="/dashboard/members" className="text-sm font-medium text-primary">
@@ -498,20 +473,6 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
             {t("Grand Medical Care patient profile, package session balance, and printable membership card details.")} </p>
         </div>
         <div className="flex flex-wrap gap-3">
-          <Button
-            variant="primary"
-            className="rounded-lg bg-green-700 hover:bg-green-800"
-            isLoading={isPreparingWhatsapp}
-            disabled={!activeCard}
-            title={activeCard ? undefined : t('Issue the membership card before sending it.')}
-            onClick={handleSendCardWhatsApp}
-          >
-            {t("Send card on WhatsApp")}
-          </Button>
-          <Button variant="outline" className="rounded-lg border-primary text-primary" onClick={() => openWhatsApp(welcomeMessage)}>
-            {t("WhatsApp Welcome")} </Button>
-          <Button variant="outline" className="rounded-lg border-primary text-primary" onClick={() => openWhatsApp(cardMessage)}>
-            {t("WhatsApp Card Ready")} </Button>
           <Button
             variant="primary"
             className="rounded-lg bg-primary hover:bg-primary/90"
@@ -670,6 +631,27 @@ export function MemberDetailsClient({ memberId }: MemberDetailsClientProps) {
             ) : (
               <p className="text-sm text-slate-500">
                 {t("Use the issue button to create the first Grand Medical Care PVC card and barcode for this member.")} </p>
+            )}
+            {activeCard && cardWhatsApp && (
+              <div className="rounded-lg border border-slate-200 p-3 text-sm" role="status">
+                <p className="font-semibold text-slate-900">{t("WhatsApp")}</p>
+                {!cardWhatsApp.configured ? (
+                  <p className="mt-1 text-slate-500">{t("WhatsApp is not set up yet. The card will be sent automatically once the Super Admin connects the clinic WhatsApp number.")}</p>
+                ) : isSendingCard ? (
+                  <p className="mt-1 text-slate-600">{t("Sending the card on WhatsApp…")}</p>
+                ) : cardWhatsApp.sentAt ? (
+                  <p className="mt-1 text-green-700">{t("Card sent to")} <bdi dir="ltr">{member.phone}</bdi> · {formatDisplayDate(cardWhatsApp.sentAt)}</p>
+                ) : cardWhatsApp.lastStatus === 'failed' ? (
+                  <p className="mt-1 text-red-700">{t("Card not sent:")} {t(cardWhatsApp.lastError || 'WhatsApp message could not be sent.')}</p>
+                ) : (
+                  <p className="mt-1 text-slate-500">{t("The card has not been sent on WhatsApp yet.")}</p>
+                )}
+                {cardWhatsApp.configured && (
+                  <Button size="sm" variant="outline" className="mt-2" isLoading={isSendingCard} onClick={() => sendCardOnWhatsApp(false)}>
+                    {t(cardWhatsApp.sentAt ? "Send card again" : "Send card on WhatsApp")}
+                  </Button>
+                )}
+              </div>
             )}
             {isSuperAdmin && (
               <div className="flex flex-wrap gap-3 border-t border-slate-200 pt-4">

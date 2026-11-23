@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { buildSessionRecordedMessage, buildWhatsAppLink, buildWhatsAppWebLink, clinicDateLabel, sendWhatsAppMessage } from '@/lib/whatsapp';
+import { sendSessionConfirmation } from '@/lib/whatsapp-cloud/notify';
 import { processSessionSchema } from '@/lib/validators';
 
 export const dynamic = 'force-dynamic';
@@ -134,37 +134,32 @@ export async function POST(request: NextRequest) {
       return { updatedPackage, session };
     });
 
-    const message = buildSessionRecordedMessage({
-      name: member.name,
-      treatmentName: updatedPackage.package.treatment?.name,
-      packageName: updatedPackage.package.name,
-      date: clinicDateLabel(),
-      usedSessions: updatedPackage.usedSessions,
-      totalSessions: updatedPackage.totalSessions,
-      remainingSessions: updatedPackage.remainingSessions,
-    });
-
-    // Send WhatsApp notification (auto-send if API credentials configured, fallback to link)
-    const whatsappResult = await sendWhatsAppMessage(member.phone, message);
-
-    await db.whatsAppLog.create({
-	      data: {
-		          phone: member.phone,
-		          message,
-		          messageType: 'SESSION_USED',
-		          status: whatsappResult.success ? 'sent' : 'pending',
-		  },
-	});
+    // Session confirmation from the clinic WhatsApp number (Meta WhatsApp API).
+    // A WhatsApp problem never undoes the recorded session.
+    let whatsapp;
+    try {
+      whatsapp = await sendSessionConfirmation({
+        memberId: member!.id,
+        phone: member!.phone,
+        name: member!.name,
+        treatment: updatedPackage.package.treatment?.name && updatedPackage.package.treatment.name !== updatedPackage.package.name
+          ? `${updatedPackage.package.treatment.name} (${updatedPackage.package.name})`
+          : updatedPackage.package.name,
+        usedSessions: updatedPackage.usedSessions,
+        totalSessions: updatedPackage.totalSessions,
+        remainingSessions: updatedPackage.remainingSessions,
+        sessionId: session.id,
+      });
+    } catch (error) {
+      console.error('Session WhatsApp error:', error);
+      whatsapp = { status: 'failed' as const, error: 'WhatsApp message could not be sent.' };
+    }
 
     return NextResponse.json({
-	      session,
-	      memberPackage: updatedPackage,
-	      whatsappSent: whatsappResult.success,
-	      whatsappMethod: whatsappResult.method,
-	      whatsappLink: whatsappResult.link ?? null,
-	      // Opens WhatsApp Web (clinic's logged-in number) to the member's phone with the message typed in.
-	      whatsappWebLink: whatsappResult.success ? null : buildWhatsAppWebLink(member.phone, message),
-	});
+      session,
+      memberPackage: updatedPackage,
+      whatsapp,
+    });
 } catch (error) {
     console.error('Session processing error:', error);
     return NextResponse.json(

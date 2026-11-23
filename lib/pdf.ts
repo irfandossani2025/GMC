@@ -163,10 +163,10 @@ export function generatePrintableHTML(
  * Renders the card (front, and back if given) into a single PNG image,
  * stacked vertically, for sharing on WhatsApp.
  */
-export async function renderCardImage(frontElement: HTMLElement, backElement?: HTMLElement): Promise<Blob> {
+export async function renderCardImage(frontElement: HTMLElement, backElement?: HTMLElement, scale = 3): Promise<Blob> {
   const surface = (element: HTMLElement, selector: string): HTMLElement =>
     element.matches(selector) ? element : element.querySelector<HTMLElement>(selector) || element;
-  const options = { scale: 3, allowTaint: true, useCORS: true, logging: false, backgroundColor: '#0B1F3A', onclone: prepareCardLogosForExport };
+  const options = { scale, allowTaint: true, useCORS: true, logging: false, backgroundColor: '#0B1F3A', onclone: prepareCardLogosForExport };
   const front = await html2canvas(surface(frontElement, '.card-print-surface'), options);
   const back = backElement ? await html2canvas(surface(backElement, '.card-print-back'), options) : null;
 

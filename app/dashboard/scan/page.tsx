@@ -58,10 +58,7 @@ interface ScanResult {
 interface SessionProcessResponse {
 	  session: ScanSession;
 	  memberPackage: ScanPackage;
-	  whatsappLink: string;
-	  whatsappWebLink?: string | null;
-	    whatsappSent?: boolean;
-		        whatsappMethod?: string;
+	  whatsapp?: { status: 'sent' | 'failed' | 'not_configured' | 'disabled'; error?: string };
 }
 
 export default function ScanPage() {
@@ -75,7 +72,7 @@ export default function ScanPage() {
   const [messageSuccess,setMessageSuccess]=useState(false);
   const [reviewing,setReviewing]=useState(false);
   const [needsRefresh,setNeedsRefresh]=useState(false);
-	  const [whatsappLink, setWhatsappLink] = useState('');
+	  const [whatsappNote, setWhatsappNote] = useState<{ ok: boolean; text: string } | null>(null);
 
 	  // Manual entry mode
 	  const [inputMode, setInputMode] = useState<'scan' | 'manual'>('scan');
@@ -111,7 +108,7 @@ export default function ScanPage() {
 		      setMessage('');
 		      setScanResult(null);
 		      setSelectedPackageId('');
-		      setWhatsappLink('');
+		      setWhatsappNote(null);
 
 		  try {
 				                  const data = await getJson<ScanResult>(`/api/scan?${buildScanQuery(searchValue)}`);
@@ -139,7 +136,7 @@ export default function ScanPage() {
 
 				    setIsProcessing(true);
 				    setMessage('');
-				    setWhatsappLink('');
+				    setWhatsappNote(null);
 
 				    try {
 						      const response = await postJson<SessionProcessResponse>('/api/sessions', {
@@ -149,19 +146,12 @@ export default function ScanPage() {
 								          packageId: selectedPackageId,
 							  });
 
-						      // Open WhatsApp Web straight away with the message typed in for the member.
-						      const webLink = response.whatsappWebLink || '';
-						      const opened = !response.whatsappSent && webLink ? !!window.open(webLink, 'gmc-whatsapp') : false;
-						      const msg = response.whatsappSent
-							          ? 'Session confirmed. WhatsApp notification sent automatically.'
-							          : opened
-								            ? 'Session confirmed. WhatsApp Web opened in another tab with the message typed in. Press Send there.'
-								            : 'Session confirmed. Use the button below to send a WhatsApp notification.';
-
-						      setMessage(msg);setMessageSuccess(true);setReviewing(false);setNeedsRefresh(true);
-						      if (webLink || response.whatsappLink) {
-								          setWhatsappLink(webLink || response.whatsappLink);
-							  }
+						      // The server sends the WhatsApp confirmation from the clinic number (Meta WhatsApp API).
+						      const wa = response.whatsapp;
+						      setMessage('Session confirmed.');setMessageSuccess(true);setReviewing(false);setNeedsRefresh(true);
+						      if (wa?.status === 'sent') setWhatsappNote({ ok: true, text: 'WhatsApp confirmation sent to the patient.' });
+						      else if (wa?.status === 'failed') setWhatsappNote({ ok: false, text: wa.error || 'WhatsApp message could not be sent.' });
+						      else if (wa?.status === 'not_configured') setWhatsappNote({ ok: false, text: 'WhatsApp is not set up yet, so no confirmation was sent.' });
 
 						      // Refresh scan result to show updated session count
 						      const searchValue = currentSearchValue();
@@ -193,7 +183,7 @@ export default function ScanPage() {
 					      setMessage('');
 					      setScanResult(null);
 					      setSelectedPackageId('');
-					      setWhatsappLink('');
+					      setWhatsappNote(null);
 				  };
 
 				  return (
@@ -203,7 +193,7 @@ export default function ScanPage() {
 									        <p className="text-slate-600 mt-1">
 												          {t("Scan membership card")} </p>
 									        <p className="text-sm text-slate-500 mt-1">
-												          {t("Use the member barcode to load session balance, confirm attendance, and generate a WhatsApp notification when the session is recorded.")} </p>
+												          {t("Use the member barcode to load session balance and confirm attendance. The patient receives a WhatsApp confirmation automatically.")} </p>
 						  </div>
 
 						        <Card>
@@ -390,19 +380,10 @@ export default function ScanPage() {
 										              </Card>
 									            )}
 
-								  {/* WhatsApp link fallback */}
-								  {whatsappLink && (
-									              <Card>
-										                <CardContent className="pt-4">
-															                <p className="text-sm text-slate-600">
-																				                  {t("A WhatsApp message was prepared for the patient. If the WhatsApp tab didn't open, or you closed it, open it again here.")} </p>
-															                <Button
-																				                  variant="secondary"
-																				                  onClick={() => window.open(whatsappLink, whatsappLink.includes('web.whatsapp.com') ? 'gmc-whatsapp' : '_blank')}
-																				                >
-																				                  {t("Open WhatsApp message")} </Button>
-										  </CardContent>
-										              </Card>
+								  {whatsappNote && (
+									              <div role="status" className={`feedback-banner ${whatsappNote.ok ? 'success' : 'error'}`}>
+										                <p>{t(whatsappNote.ok ? whatsappNote.text : 'WhatsApp not sent:')} {!whatsappNote.ok && t(whatsappNote.text)}</p>
+									              </div>
 									            )}
 
 								  {/* Recent sessions */}

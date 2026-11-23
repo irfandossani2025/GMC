@@ -1,6 +1,7 @@
 import React from 'react';
 const paths: Record<string, string> = {
  mail: 'M3 5h18v14H3z M3 5l9 7 9-7',
+ chat: 'M4 4h16v12H8l-4 4z M8 9h8 M8 12h5',
  dashboard: 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',
  scan: 'M8 3H3v5 M16 3h5v5 M3 16v5h5 M21 16v5h-5 M7 12h10 M9 8v8 M15 8v8',
  patients: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M17 4a4 4 0 0 1 0 8 M22 21v-2a4 4 0 0 0-3-3.87',
