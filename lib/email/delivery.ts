@@ -13,15 +13,15 @@ export function isPublicMailAddress(address: string): boolean {
 class VerifiedSMTPClient extends SMTPClient {
   constructor(options: ConstructorParameters<typeof SMTPClient>[0]) {
     super(options);
-    // emailjs 4 can leave login waiting when EHLO features are already cached.
-    // Repeat EHLO on this connection and always complete the continuation.
-    this.smtp.ehlo_or_helo_if_needed = callback => {
-      this.smtp.ehlo(error => {
-        if (error) return callback(error);
+    // This pinned transport does not call back when EHLO features already exist.
+    // Always complete EHLO and enforce TLS before its login continuation runs.
+    this.smtp.ehlo_or_helo_if_needed = (callback, domain) => {
+      this.smtp.ehlo((error, data) => {
+        if(error) {callback(error);return;}
         const socket = (this.smtp as unknown as {sock?: {encrypted?: boolean; authorized?: boolean}}).sock;
-        if (!socket?.encrypted || !socket.authorized) return callback(new Error('A verified encrypted SMTP connection is required.'));
-        callback();
-      });
+        if(!socket?.encrypted || !socket.authorized) {callback(new Error('A verified encrypted SMTP connection is required.'));return;}
+        callback(null,data);
+      }, domain);
     };
   }
   sendAfterVerification(message: MessageHeaders) {

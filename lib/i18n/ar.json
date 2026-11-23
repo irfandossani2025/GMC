@@ -529,5 +529,7 @@
   "Enter a valid sender email address.": "أدخل عنوان بريد مرسل صحيحاً.",
   "Enter a valid reply-to email address.": "أدخل عنوان بريد رد صحيحاً.",
   "Use TLS for port 465, or STARTTLS for ports 587 and 2525.": "استخدم TLS للمنفذ 465 أو STARTTLS للمنفذين 587 و2525.",
-  "Use a single line.": "استخدم سطراً واحداً."
+  "Use a single line.": "استخدم سطراً واحداً.",
+  "User ID": "معرّف المستخدم",
+  "Username": "اسم المستخدم"
 }

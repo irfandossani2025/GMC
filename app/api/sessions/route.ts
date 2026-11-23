@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
     const session = await db.session.create({
       data: {
         memberId: member.id,
-        treatmentId: selectedPackage.packageId,
+              treatmentId: selectedPackage.package.treatmentId,
         packageId: selectedPackage.id,
         sessionNumber: selectedPackage.usedSessions + 1,
         status: 'COMPLETED',
@@ -122,14 +122,18 @@ export async function POST(request: NextRequest) {
     // Send WhatsApp notification (auto-send if API credentials configured, fallback to link)
     const whatsappResult = await sendWhatsAppMessage(member.phone, message);
 
-    await db.whatsAppLog.create({
-	      data: {
-		          phone: member.phone,
-		          message,
-		          messageType: 'SESSION_USED',
-		          status: whatsappResult.success ? 'sent' : 'pending',
-		  },
-	});
+    try {
+      await db.whatsAppLog.create({
+        data: {
+          phone: member.phone,
+          message,
+          messageType: 'SESSION_USED',
+          status: whatsappResult.success ? 'sent' : 'pending',
+        },
+      });
+    } catch (logErr) {
+      console.error('WhatsApp log failed (non-critical):', logErr);
+    }
 
     return NextResponse.json({
 	      session,
@@ -141,7 +145,7 @@ export async function POST(request: NextRequest) {
 } catch (error) {
     console.error('Session processing error:', error);
     return NextResponse.json(
-      { error: 'Failed to process session' },
+      { error: 'Failed to process session: ' + (error instanceof Error ? error.message : String(error)) },
       { status: 400 }
     );
   }

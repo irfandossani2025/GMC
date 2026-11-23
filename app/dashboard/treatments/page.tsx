@@ -5,7 +5,7 @@ import { useLanguage } from '@/components/i18n/LanguageProvider';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { getJson, postJson } from '@/lib/api-client';
+import { getJson, postJson, patchJson } from '@/lib/api-client';
 
 interface TreatmentPackageItem {
   id: string;
@@ -51,6 +51,36 @@ export default function TreatmentsPage() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const [loading,setLoading]=useState(true);
+  const [editingPackageId, setEditingPackageId] = useState<string | null>(null);
+  const [canEdit, setCanEdit] = useState(false);
+  useEffect(() => {
+    getJson<{ role: string }>('/api/auth/me')
+      .then((me) => setCanEdit(me.role === 'ADMIN' || me.role === 'SUPER_ADMIN'))
+      .catch(() => setCanEdit(false));
+  }, []);
+
+  const startEdit = (treatment: TreatmentItem, pkg: TreatmentPackageItem) => {
+    setMessage(null);
+    setEditingPackageId(pkg.id);
+    setForm({
+      treatmentName: treatment.name,
+      category: treatment.category,
+      packageName: pkg.name,
+      description: pkg.description || '',
+      durationMinutes: treatment.durationMinutes,
+      treatmentPrice: treatment.price,
+      sessionCount: pkg.sessionCount,
+      packagePrice: pkg.price,
+      validityMonths: pkg.validityMonths,
+    });
+    setTimeout(() => document.getElementById('treatment-package-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+  };
+
+  const cancelEdit = () => {
+    setEditingPackageId(null);
+    setForm(emptyForm);
+    setMessage(null);
+  };
   useEffect(() => {
     fetchTreatments();
   }, []);
@@ -75,8 +105,14 @@ export default function TreatmentsPage() {
     setIsSaving(true);
 
     try {
-      await postJson('/api/treatments', form);
-      setMessage({ type: 'success', text: 'Treatment package saved successfully.' });
+      if (editingPackageId) {
+        await patchJson(`/api/treatments/packages/${editingPackageId}`, form);
+        setMessage({ type: 'success', text: 'Treatment package updated successfully.' });
+        setEditingPackageId(null);
+      } else {
+        await postJson('/api/treatments', form);
+        setMessage({ type: 'success', text: 'Treatment package saved successfully.' });
+      }
       setForm(emptyForm);
       await fetchTreatments();
     } catch (error) {
@@ -124,6 +160,11 @@ export default function TreatmentsPage() {
                           <span className="rounded-full bg-white px-3 py-1 border border-slate-200">{pkg.validityMonths} {t("months")}</span>
                           <span className="rounded-full bg-white px-3 py-1 border border-slate-200">{pkg.price.toFixed(2)} {t("OMR")}</span>
                         </div>
+                        {canEdit && (
+                          <button type="button" onClick={() => startEdit(treatment, pkg)} className="mt-3 inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100">
+                            {t("Edit")}
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -136,7 +177,7 @@ export default function TreatmentsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{t("Add a new package")}</CardTitle>
+          <CardTitle>{editingPackageId ? t("Edit package") : t("Add a new package")}</CardTitle>
         </CardHeader>
         <CardContent>
           {message && (
@@ -145,7 +186,7 @@ export default function TreatmentsPage() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit}><fieldset disabled={isSaving} className="grid gap-5 lg:grid-cols-2">
+          <form id="treatment-package-form" onSubmit={handleSubmit}><fieldset disabled={isSaving} className="grid gap-5 lg:grid-cols-2">
             <div>
               <label htmlFor="field-app-dashboard-treatments-page-tsx-1" className="mb-1 block text-sm font-medium text-gray-700">{t("Treatment name")}</label>
               <input id="field-app-dashboard-treatments-page-tsx-1"
@@ -229,9 +270,10 @@ export default function TreatmentsPage() {
                 required
               />
             </div>
-            <div className="lg:col-span-2 flex justify-end">
+            <div className="lg:col-span-2 flex justify-end gap-3">
+              {editingPackageId && (<Button type="button" variant="secondary" onClick={cancelEdit}>{t("Cancel")}</Button>)}
               <Button type="submit" variant="primary" isLoading={isSaving}>
-                {t("Save treatment package")} </Button>
+                {editingPackageId ? t("Update treatment package") : t("Save treatment package")} </Button>
             </div>
           </fieldset></form>
         </CardContent>
